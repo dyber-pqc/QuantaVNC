@@ -2,6 +2,10 @@ name: Build
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -20,14 +24,15 @@ jobs:
           sudo apt-get install -y libavcodec-dev libavutil-dev libswscale-dev
           sudo apt-get install -y uuid-dev libglib2.0-dev libpipewire-0.3-dev
           sudo apt-get install -y libwayland-dev libxkbcommon-dev
-          sudo apt-get install -y libgtest-dev
-          sudo apt-get install -y astyle cmake ninja-build
+          sudo apt-get install -y libgtest-dev cmake ninja-build
       - name: Build and install liboqs
         run: |
           git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
-          cd /tmp/liboqs
-          mkdir build && cd build
-          cmake -GNinja -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_SHARED_LIBS=ON -DOQS_BUILD_ONLY_LIB=ON ..
+          cd /tmp/liboqs && mkdir build && cd build
+          cmake -GNinja \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_SHARED_LIBS=ON \
+            -DOQS_BUILD_ONLY_LIB=ON ..
           ninja
           sudo ninja install
           sudo ldconfig
@@ -64,7 +69,7 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       VERBOSE: 1
     defaults:
@@ -75,27 +80,34 @@ jobs:
       - uses: msys2/setup-msys2@v2
         with:
           update: true
-      - name: Install dependencies
-        run: |
-          pacman --sync --noconfirm --needed \
-            make mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake
-          pacman --sync --noconfirm --needed \
-            mingw-w64-x86_64-fltk1.3 mingw-w64-x86_64-libjpeg-turbo \
-            mingw-w64-x86_64-gnutls mingw-w64-x86_64-pixman \
-            mingw-w64-x86_64-nettle mingw-w64-x86_64-gmp \
+          install: >-
+            git
+            make
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-fltk1.3
+            mingw-w64-x86_64-libjpeg-turbo
+            mingw-w64-x86_64-gnutls
+            mingw-w64-x86_64-pixman
+            mingw-w64-x86_64-nettle
+            mingw-w64-x86_64-gmp
             mingw-w64-x86_64-gtest
       - name: Build and install liboqs
         run: |
           git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
-          cd /tmp/liboqs
-          mkdir build && cd build
-          cmake -G "MSYS Makefiles" -DCMAKE_INSTALL_PREFIX=/mingw64 -DBUILD_SHARED_LIBS=ON -DOQS_BUILD_ONLY_LIB=ON ..
-          make -j$(nproc)
-          make install
+          cd /tmp/liboqs && mkdir build && cd build
+          cmake -G "MinGW Makefiles" \
+            -DCMAKE_INSTALL_PREFIX=/mingw64 \
+            -DBUILD_SHARED_LIBS=ON \
+            -DOQS_BUILD_ONLY_LIB=ON \
+            -DOQS_USE_OPENSSL=OFF ..
+          mingw32-make -j$(nproc)
+          mingw32-make install
       - name: Configure
         run: |
           cmake \
-            -G "MSYS Makefiles" \
+            -G "MinGW Makefiles" \
             -DCMAKE_BUILD_TYPE=Debug \
             -DENABLE_NLS=ON \
             -DENABLE_H264=ON \
@@ -106,12 +118,12 @@ jobs:
             -S . -B build
       - name: Build
         working-directory: build
-        run: make -j$(nproc)
+        run: mingw32-make -j$(nproc)
       - name: Install
         working-directory: build
         env:
           MSYS2_PATH_TYPE: inherit
-        run: make installer winvnc_installer
+        run: mingw32-make installer winvnc_installer
       - uses: actions/upload-artifact@v4
         with:
           name: Windows
@@ -128,7 +140,7 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       VERBOSE: 1
     steps:
@@ -137,9 +149,18 @@ jobs:
         run: |
           brew install fltk@1.3 pixman ffmpeg
           brew install gnutls nettle gmp
-          brew install googletest
-          brew install liboqs
+          brew install googletest cmake ninja
           brew link fltk@1.3
+      - name: Build and install liboqs
+        run: |
+          git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
+          cd /tmp/liboqs && mkdir build && cd build
+          cmake -GNinja \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBUILD_SHARED_LIBS=ON \
+            -DOQS_BUILD_ONLY_LIB=ON ..
+          ninja
+          sudo ninja install
       - name: Configure
         run: |
           cmake \
@@ -149,7 +170,6 @@ jobs:
             -DENABLE_GNUTLS=ON \
             -DENABLE_NETTLE=ON \
             -DENABLE_PQC=ON \
-            -DENABLE_WAYLAND=ON \
             -DBUILD_VIEWER=ON \
             -S . -B build
       - name: Build

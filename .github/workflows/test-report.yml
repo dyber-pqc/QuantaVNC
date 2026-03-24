@@ -2,9 +2,13 @@ name: Test report
 
 on:
   workflow_run:
-    workflows: ['build']
+    workflows: ['Build']
     types:
       - completed
+
+permissions:
+  checks: write
+  actions: read
 
 jobs:
   report:
