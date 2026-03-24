@@ -22,6 +22,7 @@
 #endif
 
 #include <stdexcept>
+#include <string.h>
 
 #include <rfb/Security.h>
 #include <rfb/SecurityServer.h>
@@ -42,6 +43,13 @@
 #endif
 
 using namespace rfb;
+
+core::StringParameter SecurityServer::pqcMode
+("PQCMode",
+ "Server PQC policy: required (only PQC types offered), "
+ "preferred (PQC first with classical fallback), "
+ "off (no PQC types offered)",
+ "preferred");
 
 core::EnumListParameter SecurityServer::secTypes
 ("SecurityTypes",
@@ -84,6 +92,29 @@ core::EnumListParameter SecurityServer::secTypes
  "TLSVnc",
 #endif
  "VncAuth"});
+
+bool SecurityServer::isPQCType(uint32_t secType)
+{
+  return (secType >= secTypePQKEMNone && secType <= secTypePQKEMPlain) ||
+         (secType >= secTypePQTLSNone && secType <= secTypePQX509Plain);
+}
+
+const std::list<uint32_t> SecurityServer::GetEnabledExtSecTypes()
+{
+  std::list<uint32_t> types = Security::GetEnabledExtSecTypes();
+  const char* mode = pqcMode;
+
+  if (strcasecmp(mode, "required") == 0) {
+    // Only PQC types
+    types.remove_if([](uint32_t t) { return !isPQCType(t); });
+  } else if (strcasecmp(mode, "off") == 0) {
+    // No PQC types
+    types.remove_if([](uint32_t t) { return isPQCType(t); });
+  }
+  // "preferred" = return as-is (PQC types already listed first in defaults)
+
+  return types;
+}
 
 SSecurity* SecurityServer::GetSSecurity(SConnection* sc, uint32_t secType)
 {

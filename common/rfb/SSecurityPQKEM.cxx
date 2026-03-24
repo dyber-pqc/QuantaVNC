@@ -21,6 +21,7 @@
 
 #include <string.h>
 #include <assert.h>
+#include <string>
 
 #include <oqs/oqs.h>
 #include <nettle/sha2.h>
@@ -33,6 +34,8 @@
 #include <rdr/RandomStream.h>
 
 #include <rfb/PQCAlgorithm.h>
+#include <rfb/PQCSignature.h>
+#include <rfb/PQCKeyStore.h>
 #include <rfb/SSecurityPQKEM.h>
 #include <rfb/SConnection.h>
 #include <rfb/Exception.h>
@@ -47,6 +50,7 @@
 
 enum {
   SendPublicKeys,
+  SendSignature,
   ReadEncapsulation,
   ReadHash,
   ReadCredentials,
@@ -58,6 +62,23 @@ core::BoolParameter SSecurityPQKEM::requireUsername
 ("PQKEMRequireUsername",
  "Require username for the PQKEM security types",
  false);
+
+core::StringParameter SSecurityPQKEM::signingKeyPath
+("PQCSigningKey",
+ "Path to ML-DSA signing key file for PQKEM server authentication",
+#ifdef WIN32
+ ""
+#else
+ ""
+#endif
+ );
+
+core::StringParameter SSecurityPQKEM::signingAlgorithm
+("PQCSigningAlgorithm",
+ "ML-DSA algorithm for server authentication (ML-DSA-44, ML-DSA-65, ML-DSA-87)",
+ "ML-DSA-65");
+
+PQCKeyStore SSecurityPQKEM::signingKey;
 
 static core::LogWriter vlog("SSecurityPQKEM");
 
@@ -129,6 +150,10 @@ bool SSecurityPQKEM::processMsg()
   switch (state) {
     case SendPublicKeys:
       generateAndSendKeys();
+      state = SendSignature;
+      /* fall through */
+    case SendSignature:
+      sendSignature();
       state = ReadEncapsulation;
       /* fall through */
     case ReadEncapsulation:
@@ -218,6 +243,80 @@ void SSecurityPQKEM::generateAndSendKeys()
   os->writeBytes(kemPubKey, kemPubKeyLen);
   os->writeBytes(serverX25519Public, 32);
   os->flush();
+}
+
+void SSecurityPQKEM::sendSignature()
+{
+  rdr::OutStream* os = sc->getOutStream();
+
+  // Ensure signing key is loaded/generated
+  if (!signingKey.isLoaded()) {
+    const char* keyPath = signingKeyPath;
+    std::string path;
+
+    if (keyPath[0] == '\0') {
+      // Default path
+#ifdef WIN32
+      path = std::string(getenv("APPDATA") ? getenv("APPDATA") : ".") +
+             "\\QuantaVNC\\pqc_signing_key";
+#else
+      path = std::string(getenv("HOME") ? getenv("HOME") : ".") +
+             "/.vnc/pqc_signing_key";
+#endif
+      keyPath = path.c_str();
+    }
+
+    // Determine DSA algorithm
+    uint8_t dsaAlg = pqdsaAlgMLDSA65; // default
+    const char* algName = signingAlgorithm;
+    if (strcasecmp(algName, "ML-DSA-44") == 0)
+      dsaAlg = pqdsaAlgMLDSA44;
+    else if (strcasecmp(algName, "ML-DSA-87") == 0)
+      dsaAlg = pqdsaAlgMLDSA87;
+
+    if (!signingKey.loadOrGenerate(keyPath, dsaAlg))
+      throw std::runtime_error("Failed to load or generate ML-DSA signing key");
+
+    vlog.info("ML-DSA server identity: %s",
+              signingKey.computeFingerprint().c_str());
+  }
+
+  // Sign: SHA-256(selectedAlg || kemPubKey || serverX25519Public)
+  uint8_t msgHash[32];
+  {
+    struct sha256_ctx ctx;
+    sha256_init(&ctx);
+    sha256_update(&ctx, 1, &selectedAlg);
+    sha256_update(&ctx, kemPubKeyLen, kemPubKey);
+    sha256_update(&ctx, 32, serverX25519Public);
+    sha256_digest(&ctx, 32, msgHash);
+  }
+
+  uint8_t* signature = nullptr;
+  size_t sigLen = 0;
+  if (!signingKey.sign(msgHash, 32, &signature, &sigLen))
+    throw std::runtime_error("ML-DSA signing failed");
+
+  // Wire format:
+  //   U8(dsaAlgId)
+  //   U16(dsaPubKeyLen) || dsaPubKey
+  //   U16(signatureLen) || signature
+  os->writeU8(signingKey.getAlgorithm());
+
+  size_t pkLen = signingKey.getPublicKeyLen();
+  os->writeU16((uint16_t)pkLen);
+  os->writeBytes(signingKey.getPublicKey(), pkLen);
+
+  os->writeU16((uint16_t)sigLen);
+  os->writeBytes(signature, sigLen);
+  os->flush();
+
+  OQS_MEM_cleanse(signature, sigLen);
+  delete[] signature;
+
+  vlog.info("Sent ML-DSA-%s signature (%d bytes) and public key (%d bytes)",
+            pqdsaAlgDisplayName(signingKey.getAlgorithm()),
+            (int)sigLen, (int)pkLen);
 }
 
 bool SSecurityPQKEM::readEncapsulation()

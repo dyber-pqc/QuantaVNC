@@ -31,6 +31,8 @@
 #include <nettle/curve25519.h>
 
 #include <rfb/PQCAlgorithm.h>
+#include <rfb/PQCSignature.h>
+#include <rfb/PQCKeyStore.h>
 #include <rfb/CSecurityPQKEM.h>
 #include <rfb/CConnection.h>
 #include <rfb/Exception.h>
@@ -44,6 +46,7 @@
 
 enum {
   ReadServerPublicKeys,
+  ReadServerSignature,
   ReadHash,
   ReadSubtype,
 };
@@ -59,6 +62,7 @@ CSecurityPQKEM::CSecurityPQKEM(CConnection* cc_, uint32_t _secType,
     serverKEMPubKey(nullptr), kemCiphertext(nullptr),
     kemSharedSecret(nullptr),
     kemPubKeyLen(0), kemCiphertextLen(0), kemSharedSecretLen(0),
+    serverDSAPubKey(nullptr), serverDSAPubKeyLen(0), serverDSAAlgId(0),
     rais(nullptr), raos(nullptr), rawis(nullptr), rawos(nullptr)
 {
   memset(clientX25519Private, 0, sizeof(clientX25519Private));
@@ -95,6 +99,8 @@ void CSecurityPQKEM::cleanup()
     delete[] kemCiphertext;
   if (kemSharedSecret)
     delete[] kemSharedSecret;
+  if (serverDSAPubKey)
+    delete[] serverDSAPubKey;
 
   if (isAllEncrypted && rawis && rawos)
     cc->setStreams(rawis, rawos);
@@ -109,6 +115,11 @@ bool CSecurityPQKEM::processMsg()
   switch (state) {
     case ReadServerPublicKeys:
       if (!readServerPublicKeys())
+        return false;
+      state = ReadServerSignature;
+      /* fall through */
+    case ReadServerSignature:
+      if (!readServerSignature())
         return false;
       verifyServer();
       writeEncapsulation();
@@ -191,25 +202,96 @@ bool CSecurityPQKEM::readServerPublicKeys()
   return true;
 }
 
+bool CSecurityPQKEM::readServerSignature()
+{
+  rdr::InStream* is = cc->getInStream();
+
+  // Read: U8(dsaAlgId) + U16(dsaPubKeyLen) + dsaPubKey + U16(sigLen) + signature
+  if (!is->hasData(1))
+    return false;
+  is->setRestorePoint();
+
+  serverDSAAlgId = is->readU8();
+
+  if (!is->hasDataOrRestore(2))
+    return false;
+  uint16_t pkLen = is->readU16();
+  if (pkLen == 0 || pkLen > 16384) {
+    is->clearRestorePoint();
+    throw protocol_error("Invalid ML-DSA public key length");
+  }
+
+  if (!is->hasDataOrRestore(pkLen + 2))
+    return false;
+
+  serverDSAPubKey = new uint8_t[pkLen];
+  serverDSAPubKeyLen = pkLen;
+  is->readBytes(serverDSAPubKey, pkLen);
+
+  uint16_t sigLen = is->readU16();
+  if (sigLen == 0 || sigLen > 16384) {
+    is->clearRestorePoint();
+    throw protocol_error("Invalid ML-DSA signature length");
+  }
+
+  if (!is->hasDataOrRestore(sigLen))
+    return false;
+  is->clearRestorePoint();
+
+  uint8_t* signature = new uint8_t[sigLen];
+  is->readBytes(signature, sigLen);
+
+  // Reconstruct the message that was signed:
+  //   SHA-256(selectedAlg || kemPubKey || serverX25519Public)
+  uint8_t msgHash[32];
+  {
+    struct sha256_ctx ctx;
+    sha256_init(&ctx);
+    sha256_update(&ctx, 1, &selectedAlg);
+    sha256_update(&ctx, kemPubKeyLen, serverKEMPubKey);
+    sha256_update(&ctx, 32, serverX25519Public);
+    sha256_digest(&ctx, 32, msgHash);
+  }
+
+  // Verify the signature
+  bool valid = PQCKeyStore::verify(serverDSAAlgId, serverDSAPubKey, pkLen,
+                                   msgHash, 32, signature, sigLen);
+  delete[] signature;
+
+  if (!valid)
+    throw protocol_error("ML-DSA signature verification failed - "
+                         "server identity cannot be authenticated");
+
+  vlog.info("ML-DSA-%s signature verified successfully",
+            pqdsaAlgDisplayName(serverDSAAlgId));
+
+  return true;
+}
+
 void CSecurityPQKEM::verifyServer()
 {
-  // Compute SHA-256 fingerprint of the server's KEM public key
+  // Compute SHA-256 fingerprint of the server's ML-DSA signing public key
+  // (long-lived identity, not the ephemeral KEM key)
   uint8_t hash[32];
   struct sha256_ctx ctx;
   sha256_init(&ctx);
-  sha256_update(&ctx, kemPubKeyLen, serverKEMPubKey);
+  sha256_update(&ctx, serverDSAPubKeyLen, serverDSAPubKey);
   sha256_digest(&ctx, sizeof(hash), hash);
 
   // Display first 8 bytes as fingerprint
   uint8_t f[8];
   memcpy(f, hash, 8);
 
-  const char *title = "Server key fingerprint";
+  const char *title = "Server identity verification";
   std::string text = core::format(
-    "The server has provided the following identifying information:\n"
-    "Fingerprint: %02x-%02x-%02x-%02x-%02x-%02x-%02x-%02x\n"
-    "Please verify that the information is correct and press \"Yes\". "
+    "The server has provided the following ML-DSA identity:\n"
+    "Algorithm: %s\n"
+    "Fingerprint: %02x-%02x-%02x-%02x-%02x-%02x-%02x-%02x\n\n"
+    "The server's ephemeral key exchange has been cryptographically "
+    "authenticated with this identity.\n"
+    "Please verify that the fingerprint is correct and press \"Yes\". "
     "Otherwise press \"No\"",
+    pqdsaAlgDisplayName(serverDSAAlgId),
     f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7]);
   if (!cc->showMsgBox(MsgBoxFlags::M_YESNO, title, text.c_str()))
     throw auth_cancelled();
@@ -372,6 +454,10 @@ void CSecurityPQKEM::clearSecrets()
   if (serverKEMPubKey) {
     delete[] serverKEMPubKey;
     serverKEMPubKey = nullptr;
+  }
+  if (serverDSAPubKey) {
+    delete[] serverDSAPubKey;
+    serverDSAPubKey = nullptr;
   }
 
   memset(clientX25519Private, 0, sizeof(clientX25519Private));

@@ -12,7 +12,7 @@
   <a href="LICENCE.TXT"><img src="https://img.shields.io/badge/license-GPL--2.0-blue.svg" alt="License: GPL v2"></a>
   <a href="https://github.com/dyber-pqc/QuantaVNC/actions/workflows/codeql.yml"><img src="https://github.com/dyber-pqc/QuantaVNC/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
   <a href="https://github.com/open-quantum-safe/liboqs"><img src="https://img.shields.io/badge/PQC-ML--KEM--512%20%7C%20768%20%7C%201024-green.svg" alt="PQC: ML-KEM"></a>
-  <a href="https://csrc.nist.gov/projects/post-quantum-cryptography"><img src="https://img.shields.io/badge/NIST-FIPS%20203-orange.svg" alt="NIST FIPS 203"></a>
+  <a href="https://csrc.nist.gov/projects/post-quantum-cryptography"><img src="https://img.shields.io/badge/NIST-FIPS%20203%20%7C%20204-orange.svg" alt="NIST FIPS 203 | 204"></a>
 </p>
 
 ---
@@ -24,6 +24,7 @@
 Adversaries can record encrypted VNC sessions today and decrypt them once large-scale quantum computers become available. QuantaVNC addresses this by integrating **NIST-standardized post-quantum algorithms** into the VNC protocol:
 
 - **ML-KEM** (FIPS 203) for quantum-resistant key encapsulation
+- **ML-DSA** (FIPS 204) for quantum-resistant server authentication signatures
 - **Hybrid approach**: classical X25519 + post-quantum ML-KEM (512/768/1024) -- if either algorithm holds, the session stays secure
 - **PQC-first**: PQC security types are preferred by default, with automatic fallback to classical
 - **AES-256-EAX** authenticated encryption for channel protection
@@ -56,23 +57,24 @@ QuantaVNC provides two PQC approaches:
 ## Features
 
 - **ML-KEM + X25519** hybrid key exchange with algorithm negotiation (ML-KEM-512/768/1024)
+- **ML-DSA server signatures** -- quantum-resistant server authentication (ML-DSA-44/65/87)
 - **PQC-first by default** -- PQC types preferred, classical fallback, configurable via `PQCMode`
+- **Server and client PQCMode** -- `required` / `preferred` / `off` on both sides
 - **PQC-enhanced TLS** with ML-KEM groups (PQTLS / PQX509 security types)
-- **TOFU server verification** -- fingerprint-based trust-on-first-use
+- **TOFU server verification** -- ML-DSA public key fingerprint-based trust-on-first-use
 - **Algorithm downgrade protection** -- negotiated algorithm ID bound into key derivation and transcript hashes
 - **Backward compatible** -- standard VNC clients connect using classical security
 - **Cross-platform** -- Windows, Linux, macOS
-- **Java viewer** with PQC negotiation
 - **CodeQL security scanning** and dependency review in CI
 - **GUI configuration** -- PQC Mode dropdown (Preferred / Required / Off)
 
 ## Security Types
 
-| Type | Auth | Key Exchange | Encryption |
-|------|------|-------------|------------|
-| `PQKEMNone` | None | ML-KEM-512/768/1024 + X25519 | AES-256-EAX |
-| `PQKEMVnc` | VNC password | ML-KEM-512/768/1024 + X25519 | AES-256-EAX |
-| `PQKEMPlain` | Username/password | ML-KEM-512/768/1024 + X25519 | AES-256-EAX |
+| Type | Auth | Key Exchange | Server Identity | Encryption |
+|------|------|-------------|----------------|------------|
+| `PQKEMNone` | None | ML-KEM + X25519 | ML-DSA signature | AES-256-EAX |
+| `PQKEMVnc` | VNC password | ML-KEM + X25519 | ML-DSA signature | AES-256-EAX |
+| `PQKEMPlain` | Username/password | ML-KEM + X25519 | ML-DSA signature | AES-256-EAX |
 | `PQTLSNone` | None | TLS + ML-KEM groups | TLS 1.3 |
 | `PQTLSVnc` | VNC password | TLS + ML-KEM groups | TLS 1.3 |
 | `PQTLSPlain` | Username/password | TLS + ML-KEM groups | TLS 1.3 |
@@ -98,7 +100,7 @@ make -j$(nproc)
 
 | Dependency | Minimum Version | Purpose |
 |-----------|----------------|---------|
-| [liboqs](https://github.com/open-quantum-safe/liboqs) | 0.9.0 | Post-quantum algorithms (ML-KEM-512/768/1024) |
+| [liboqs](https://github.com/open-quantum-safe/liboqs) | 0.9.0 | Post-quantum algorithms (ML-KEM, ML-DSA) |
 | [GnuTLS](https://www.gnutls.org/) | 3.6.0 | TLS / X.509 |
 | [Nettle](https://www.lysator.liu.se/~nisse/nettle/) | 3.4 | AES-EAX, SHA-256, X25519 |
 | [FLTK](https://www.fltk.org/) | 1.3.3 | GUI toolkit |
@@ -110,9 +112,12 @@ See **[BUILDING.md](BUILDING.md)** for detailed platform-specific build instruct
 
 ### Run
 
-**Server** -- offer PQC security types:
+**Server** -- offer PQC security types (PQC-first by default):
 ```bash
 vncserver -SecurityTypes PQKEMVnc,TLSVnc,VncAuth
+
+# Or enforce PQC-only connections:
+vncserver -PQCMode=required
 ```
 
 **Client** -- PQC types are preferred automatically when available:
@@ -141,11 +146,12 @@ vncviewer -PQCMode=off hostname:1
 
 QuantaVNC is designed to protect against harvest-now-decrypt-later attacks. Please review [doc/PQC-SECURITY.md](doc/PQC-SECURITY.md) for the full threat model and known limitations:
 
-- Server authentication currently uses classical algorithms (ML-DSA signatures planned)
+- **ML-DSA server signatures** authenticate the server's identity using quantum-resistant signatures
+- **ML-KEM + X25519 hybrid** key exchange with runtime algorithm negotiation (server selects strongest)
 - VNC password auth transmits credentials inside the PQC-encrypted channel
-- Algorithm negotiation supports ML-KEM-512/768/1024; server selects the strongest available
 - Side-channel properties depend on the liboqs build configuration
 - CodeQL static analysis runs on every push; dependency review runs on PRs
+- Java viewer does not support PQC types (will negotiate classical security with a PQC server)
 
 > **Note**: QuantaVNC has not undergone a formal third-party security audit. Organizations with high-security requirements should evaluate accordingly.
 

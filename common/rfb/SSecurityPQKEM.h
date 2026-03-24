@@ -22,6 +22,8 @@
 
 #include <rfb/SSecurity.h>
 #include <rfb/PQCAlgorithm.h>
+#include <rfb/PQCSignature.h>
+#include <rfb/PQCKeyStore.h>
 
 namespace core {
   class BoolParameter;
@@ -47,10 +49,13 @@ namespace rfb {
     AccessRights getAccessRights() const override { return accessRights; }
 
     static core::BoolParameter requireUsername;
+    static core::StringParameter signingKeyPath;
+    static core::StringParameter signingAlgorithm;
 
   private:
     void cleanup();
     void generateAndSendKeys();
+    void sendSignature();
     bool readEncapsulation();
     void setCipher();
     void writeHash();
@@ -79,6 +84,9 @@ namespace rfb {
     uint8_t serverX25519Public[32];
     uint8_t clientX25519Public[32];
     uint8_t ecdhSharedSecret[32];
+
+    // ML-DSA signing key (shared across connections)
+    static PQCKeyStore signingKey;
 
     // Derived session keys
     uint8_t sessionKey[64];

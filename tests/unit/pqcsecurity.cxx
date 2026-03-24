@@ -18,8 +18,11 @@
 #include <gtest/gtest.h>
 
 #include <rfb/Security.h>
+#include <rfb/SecurityServer.h>
 #ifdef HAVE_LIBOQS
 #include <rfb/PQCAlgorithm.h>
+#include <rfb/PQCSignature.h>
+#include <rfb/PQCKeyStore.h>
 #endif
 
 // Test that PQC security type constants are defined correctly
@@ -194,4 +197,132 @@ TEST(PQCAlgorithm, ProbeSupported) {
   EXPECT_TRUE(has768) << "ML-KEM-768 not found in supported algorithms";
 }
 
+// --- ML-DSA Signature Algorithm Tests ---
+
+TEST(PQCSignature, AlgorithmConstants) {
+  EXPECT_EQ(rfb::pqdsaAlgMLDSA44, 1);
+  EXPECT_EQ(rfb::pqdsaAlgMLDSA65, 2);
+  EXPECT_EQ(rfb::pqdsaAlgMLDSA87, 3);
+}
+
+TEST(PQCSignature, OQSNameMapping) {
+  EXPECT_NE(rfb::pqdsaAlgOQSName(rfb::pqdsaAlgMLDSA44), nullptr);
+  EXPECT_NE(rfb::pqdsaAlgOQSName(rfb::pqdsaAlgMLDSA65), nullptr);
+  EXPECT_NE(rfb::pqdsaAlgOQSName(rfb::pqdsaAlgMLDSA87), nullptr);
+  EXPECT_EQ(rfb::pqdsaAlgOQSName(0), nullptr);
+  EXPECT_EQ(rfb::pqdsaAlgOQSName(255), nullptr);
+}
+
+TEST(PQCSignature, DisplayNames) {
+  EXPECT_STREQ(rfb::pqdsaAlgDisplayName(rfb::pqdsaAlgMLDSA44), "ML-DSA-44");
+  EXPECT_STREQ(rfb::pqdsaAlgDisplayName(rfb::pqdsaAlgMLDSA65), "ML-DSA-65");
+  EXPECT_STREQ(rfb::pqdsaAlgDisplayName(rfb::pqdsaAlgMLDSA87), "ML-DSA-87");
+  EXPECT_STREQ(rfb::pqdsaAlgDisplayName(0), "Unknown");
+}
+
+TEST(PQCSignature, ProbeSupported) {
+  auto supported = rfb::pqdsaProbeSupported();
+
+  // liboqs should support at least ML-DSA-65
+  EXPECT_FALSE(supported.empty());
+
+  for (auto algId : supported) {
+    EXPECT_NE(rfb::pqdsaAlgOQSName(algId), nullptr)
+      << "Probed DSA algorithm ID " << (int)algId << " has no OQS name";
+  }
+
+  // Should be ordered strongest first (87, 65, 44)
+  if (supported.size() >= 2) {
+    for (size_t i = 0; i < supported.size() - 1; i++) {
+      EXPECT_GT(supported[i], supported[i + 1])
+        << "DSA algorithms not in strongest-first order";
+    }
+  }
+
+  // ML-DSA-65 should always be available
+  bool has65 = false;
+  for (auto algId : supported) {
+    if (algId == rfb::pqdsaAlgMLDSA65)
+      has65 = true;
+  }
+  EXPECT_TRUE(has65) << "ML-DSA-65 not found in supported algorithms";
+}
+
+TEST(PQCSignature, SignAndVerify) {
+  rfb::PQCKeyStore ks;
+  ASSERT_TRUE(ks.generateForTest(rfb::pqdsaAlgMLDSA65));
+
+  // Sign a test message
+  const uint8_t msg[] = "QuantaVNC test message for ML-DSA signature";
+  uint8_t* sig = nullptr;
+  size_t sigLen = 0;
+  ASSERT_TRUE(ks.sign(msg, sizeof(msg), &sig, &sigLen));
+  EXPECT_GT(sigLen, 0u);
+
+  // Verify the signature
+  EXPECT_TRUE(rfb::PQCKeyStore::verify(
+    rfb::pqdsaAlgMLDSA65,
+    ks.getPublicKey(), ks.getPublicKeyLen(),
+    msg, sizeof(msg), sig, sigLen));
+
+  // Verify fails with wrong message
+  const uint8_t wrongMsg[] = "Wrong message";
+  EXPECT_FALSE(rfb::PQCKeyStore::verify(
+    rfb::pqdsaAlgMLDSA65,
+    ks.getPublicKey(), ks.getPublicKeyLen(),
+    wrongMsg, sizeof(wrongMsg), sig, sigLen));
+
+  delete[] sig;
+}
+
+TEST(PQCSignature, RejectWrongKey) {
+  rfb::PQCKeyStore ks1, ks2;
+  ASSERT_TRUE(ks1.loadOrGenerate("", rfb::pqdsaAlgMLDSA65));
+  ASSERT_TRUE(ks2.loadOrGenerate("", rfb::pqdsaAlgMLDSA65));
+
+  const uint8_t msg[] = "Test message";
+  uint8_t* sig = nullptr;
+  size_t sigLen = 0;
+  ASSERT_TRUE(ks1.sign(msg, sizeof(msg), &sig, &sigLen));
+
+  // Verify with wrong public key should fail
+  EXPECT_FALSE(rfb::PQCKeyStore::verify(
+    rfb::pqdsaAlgMLDSA65,
+    ks2.getPublicKey(), ks2.getPublicKeyLen(),
+    msg, sizeof(msg), sig, sigLen));
+
+  delete[] sig;
+}
+
+TEST(PQCSignature, Fingerprint) {
+  rfb::PQCKeyStore ks;
+  ASSERT_TRUE(ks.generateForTest(rfb::pqdsaAlgMLDSA65));
+
+  std::string fp = ks.computeFingerprint();
+  EXPECT_FALSE(fp.empty());
+  // Fingerprint format: xx:xx:xx:...:xx (32 bytes = 95 chars)
+  EXPECT_EQ(fp.length(), 95u);
+}
+
 #endif // HAVE_LIBOQS
+
+// --- PQCMode Tests ---
+
+TEST(PQCMode, IsPQCType) {
+  EXPECT_TRUE(rfb::SecurityServer::isPQCType(rfb::secTypePQKEMNone));
+  EXPECT_TRUE(rfb::SecurityServer::isPQCType(rfb::secTypePQKEMVnc));
+  EXPECT_TRUE(rfb::SecurityServer::isPQCType(rfb::secTypePQKEMPlain));
+  EXPECT_TRUE(rfb::SecurityServer::isPQCType(rfb::secTypePQTLSNone));
+  EXPECT_TRUE(rfb::SecurityServer::isPQCType(rfb::secTypePQTLSVnc));
+  EXPECT_TRUE(rfb::SecurityServer::isPQCType(rfb::secTypePQTLSPlain));
+  EXPECT_TRUE(rfb::SecurityServer::isPQCType(rfb::secTypePQX509None));
+  EXPECT_TRUE(rfb::SecurityServer::isPQCType(rfb::secTypePQX509Vnc));
+  EXPECT_TRUE(rfb::SecurityServer::isPQCType(rfb::secTypePQX509Plain));
+
+  // Non-PQC types
+  EXPECT_FALSE(rfb::SecurityServer::isPQCType(rfb::secTypeNone));
+  EXPECT_FALSE(rfb::SecurityServer::isPQCType(rfb::secTypeVncAuth));
+  EXPECT_FALSE(rfb::SecurityServer::isPQCType(rfb::secTypePlain));
+  EXPECT_FALSE(rfb::SecurityServer::isPQCType(rfb::secTypeTLSVnc));
+  EXPECT_FALSE(rfb::SecurityServer::isPQCType(rfb::secTypeX509Vnc));
+}

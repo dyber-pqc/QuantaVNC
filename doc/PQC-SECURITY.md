@@ -65,6 +65,14 @@ Client                                         Server
   |  <--- U16(pubKeyLen) || pk_pq  --------------- |  Key exchange
   |  <--- X25519 public key (pk_x25519) ---------- |
   |                                               |
+  |  <--- U8(dsaAlgId)  -------------------------- |  Server
+  |  <--- U16(dsaPubKeyLen) || dsaPubKey  --------- |  authentication
+  |  <--- U16(sigLen) || ML-DSA signature  -------- |  (ML-DSA)
+  |                                               |
+  |  Client verifies ML-DSA signature over          |
+  |    SHA-256(selectedAlg || pk_pq || pk_x25519)   |
+  |  Client verifies TOFU fingerprint of dsaPubKey  |
+  |                                               |
   |  ML-KEM encapsulate: (ct_pq, ss_pq) = Encaps(pk_pq)
   |  X25519 key agreement: ss_x25519 = X25519(sk, pk_x25519)
   |                                               |
@@ -97,11 +105,13 @@ The algorithm ID is cryptographically bound into both the key derivation and the
 
 ### PQC Mode
 
-QuantaVNC supports three PQC modes:
+Both the server and client support a `PQCMode` parameter with three values:
 
-- **preferred** (default): PQC security types are offered first, with classical types as fallback
+- **preferred** (default): PQC security types are offered/accepted first, with classical types as fallback
 - **required**: Only PQC security types are accepted; connections fail if PQC is unavailable
 - **off**: PQC security types are disabled; only classical types are used
+
+The fallback cascade is: **PQKEM** (direct PQC) -> **PQTLS/PQX509** (TLS with PQ groups) -> **TLS** (classical) -> **VncAuth** (no encryption). Setting `PQCMode=required` on either side enforces PQC-only connections.
 
 ### Key Derivation
 
@@ -142,9 +152,9 @@ These types benefit from the maturity of TLS implementations while gaining post-
 
 ## Known Limitations
 
-1. **No post-quantum signatures yet**: Server authentication (TOFU and X.509) still uses classical algorithms. ML-DSA signatures for server certificates are planned but not yet implemented. This means an adversary with a future quantum computer could forge server identities, though they could not decrypt passively recorded sessions.
+1. **ML-DSA server authentication**: Server identity is authenticated using ML-DSA (FIPS 204) digital signatures. The server generates a persistent ML-DSA signing keypair and signs each ephemeral key exchange. The client verifies the signature and uses TOFU (trust-on-first-use) fingerprinting of the ML-DSA public key.
 
-2. **Java viewer uses negotiation only**: The Java viewer currently negotiates PQC security types and falls back to BouncyCastle for the post-quantum operations. Native C implementation for the Java viewer is planned.
+2. **Java viewer does not support PQC**: The Java viewer does not implement PQC security types. When connecting to a PQC-enabled server, it will negotiate classical security types. If the server requires PQC (`PQCMode=required`), the Java viewer will not be able to connect.
 
 3. **No quantum-safe password authentication**: VNC password authentication (DES-based challenge-response) and Plain authentication transmit credentials inside the encrypted channel. While the channel is quantum-safe, the underlying auth protocols are unchanged.
 

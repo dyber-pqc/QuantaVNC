@@ -82,7 +82,8 @@ public class SecurityClient extends Security {
     case Security.secTypePQX509None:
     case Security.secTypePQX509Vnc:
     case Security.secTypePQX509Plain:
-      throw new Exception("PQC security types require QuantaVNC native client (Java PQC support coming soon)");
+      throw new Exception("Server requires post-quantum cryptography (PQC). " +
+        "Please use the QuantaVNC native client: https://github.com/dyber-pqc/QuantaVNC");
 
     default:
       throw new Exception("Security type not supported");
@@ -98,6 +99,6 @@ public class SecurityClient extends Security {
   public static StringParameter secTypes
   = new StringParameter("SecurityTypes",
                         "Specify which security scheme to use (None, VncAuth, Plain, Ident, TLSNone, TLSVnc, TLSPlain, TLSIdent, X509None, X509Vnc, X509Plain, X509Ident, RA2, RA2ne, RA2_256, RA2ne_256)",
-                        "PQX509Plain,PQX509Vnc,PQX509None,PQTLSPlain,PQTLSVnc,PQTLSNone,PQKEMPlain,PQKEMVnc,PQKEMNone,X509Ident,X509Plain,TLSIdent,TLSPlain,X509Vnc,TLSVnc,X509None,TLSNone,Ident,RA2_256,RA2,RA2ne_256,RA2ne,VncAuth,None", Configuration.ConfigurationObject.ConfViewer);
+                        "X509Ident,X509Plain,TLSIdent,TLSPlain,X509Vnc,TLSVnc,X509None,TLSNone,Ident,RA2_256,RA2,RA2ne_256,RA2ne,VncAuth,None", Configuration.ConfigurationObject.ConfViewer);
 
 }

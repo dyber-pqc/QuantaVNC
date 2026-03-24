@@ -23,6 +23,8 @@
 #include <rfb/CSecurity.h>
 #include <rfb/Security.h>
 #include <rfb/PQCAlgorithm.h>
+#include <rfb/PQCSignature.h>
+#include <rfb/PQCKeyStore.h>
 
 namespace rdr {
   class InStream;
@@ -45,6 +47,7 @@ namespace rfb {
   private:
     void cleanup();
     bool readServerPublicKeys();
+    bool readServerSignature();
     void verifyServer();
     void writeEncapsulation();
     void setCipher();
@@ -73,6 +76,11 @@ namespace rfb {
     uint8_t clientX25519Public[32];
     uint8_t serverX25519Public[32];
     uint8_t ecdhSharedSecret[32];
+
+    // ML-DSA server signature verification
+    uint8_t* serverDSAPubKey;
+    size_t serverDSAPubKeyLen;
+    uint8_t serverDSAAlgId;
 
     // Combined key material for hashing
     uint8_t sessionKey[64]; // 32 bytes for read key, 32 for write key

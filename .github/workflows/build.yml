@@ -74,12 +74,11 @@ jobs:
           name: test-results-linux
           path: build/tests/unit/test-results.xml
       - name: Test report
-        uses: dorny/test-reporter@v1
+        uses: mikepenz/action-junit-report@v4
         if: always()
         with:
-          name: Unit tests (Linux)
-          path: build/tests/unit/test-results.xml
-          reporter: java-junit
+          report_paths: build/tests/unit/test-results.xml
+          check_name: "Unit tests (Linux)"
 
   build-windows:
     runs-on: windows-latest
@@ -152,12 +151,11 @@ jobs:
           name: test-results-windows
           path: build/tests/unit/test-results.xml
       - name: Test report
-        uses: dorny/test-reporter@v1
+        uses: mikepenz/action-junit-report@v4
         if: always()
         with:
-          name: Unit tests (Windows)
-          path: build/tests/unit/test-results.xml
-          reporter: java-junit
+          report_paths: build/tests/unit/test-results.xml
+          check_name: "Unit tests (Windows)"
 
   build-macos:
     runs-on: macos-latest
@@ -213,12 +211,11 @@ jobs:
           name: test-results-macos
           path: build/tests/unit/test-results.xml
       - name: Test report
-        uses: dorny/test-reporter@v1
+        uses: mikepenz/action-junit-report@v4
         if: always()
         with:
-          name: Unit tests (macOS)
-          path: build/tests/unit/test-results.xml
-          reporter: java-junit
+          report_paths: build/tests/unit/test-results.xml
+          check_name: "Unit tests (macOS)"
 
   build-java:
     runs-on: ubuntu-latest

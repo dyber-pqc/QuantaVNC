@@ -36,6 +36,12 @@ namespace rfb {
     /* Create client side CSecurity class instance */
     CSecurity* GetCSecurity(CConnection* cc, uint32_t secType);
 
+    /* Override to apply PQCMode filtering */
+    const std::list<uint32_t> GetEnabledExtSecTypes(void);
+
+    /* Apply PQC mode filtering based on the pqcMode parameter */
+    void applyPQCMode(const char* mode);
+
     static core::EnumListParameter secTypes;
   };
 

@@ -23,6 +23,7 @@
 #endif
 
 #include <assert.h>
+#include <string.h>
 
 #include <stdexcept>
 
@@ -35,6 +36,7 @@
 #include <rfb/CSecurityPlain.h>
 #include <rfb/Security.h>
 #include <rfb/SecurityClient.h>
+#include <rfb/SecurityServer.h>
 #ifdef HAVE_GNUTLS
 #include <rfb/CSecurityTLS.h>
 #endif
@@ -93,6 +95,41 @@ core::EnumListParameter SecurityClient::secTypes
  "PQTLSNone", "PQTLSVnc", "PQTLSPlain", "PQX509None", "PQX509Vnc", "PQX509Plain",
 #endif
  });
+
+const std::list<uint32_t> SecurityClient::GetEnabledExtSecTypes()
+{
+  std::list<uint32_t> types = Security::GetEnabledExtSecTypes();
+  return types;
+}
+
+void SecurityClient::applyPQCMode(const char* mode)
+{
+  if (strcasecmp(mode, "required") == 0) {
+    // Remove all non-PQC types
+    std::list<uint32_t> enabled;
+    for (auto t : Security::GetEnabledExtSecTypes()) {
+      if (SecurityServer::isPQCType(t))
+        enabled.push_back(t);
+    }
+    // Also keep VeNCrypt wrapper in basic types
+    SetSecTypes(enabled);
+    // Re-enable VeNCrypt since PQC types are VeNCrypt subtypes
+    EnableSecType(secTypeVeNCrypt);
+  } else if (strcasecmp(mode, "off") == 0) {
+    // Remove all PQC types
+    std::list<uint32_t> enabled;
+    for (auto t : Security::GetEnabledExtSecTypes()) {
+      if (!SecurityServer::isPQCType(t))
+        enabled.push_back(t);
+    }
+    // Keep basic types too
+    auto basic = GetEnabledSecTypes();
+    for (auto t : basic)
+      enabled.push_back(t);
+    SetSecTypes(enabled);
+  }
+  // "preferred" = no change (PQC types are in the list alongside classical)
+}
 
 CSecurity* SecurityClient::GetCSecurity(CConnection* cc, uint32_t secType)
 {

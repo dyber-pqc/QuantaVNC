@@ -34,7 +34,14 @@ namespace rfb {
     /* Create server side SSecurity class instance */
     SSecurity* GetSSecurity(SConnection* sc, uint32_t secType);
 
+    /* Override to apply PQCMode filtering */
+    const std::list<uint32_t> GetEnabledExtSecTypes(void);
+
+    /* Check if a security type is a PQC type */
+    static bool isPQCType(uint32_t secType);
+
     static core::EnumListParameter secTypes;
+    static core::StringParameter pqcMode;
   };
 
 }
