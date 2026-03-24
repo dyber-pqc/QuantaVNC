@@ -66,6 +66,13 @@ jobs:
         with:
           name: test-results-linux
           path: build/tests/unit/test-results.xml
+      - name: Test report
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Unit tests (Linux)
+          path: build/tests/unit/test-results.xml
+          reporter: java-junit
 
   build-windows:
     runs-on: windows-latest
@@ -137,6 +144,13 @@ jobs:
         with:
           name: test-results-windows
           path: build/tests/unit/test-results.xml
+      - name: Test report
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Unit tests (Windows)
+          path: build/tests/unit/test-results.xml
+          reporter: java-junit
 
   build-macos:
     runs-on: macos-latest
@@ -191,6 +205,13 @@ jobs:
         with:
           name: test-results-macos
           path: build/tests/unit/test-results.xml
+      - name: Test report
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Unit tests (macOS)
+          path: build/tests/unit/test-results.xml
+          reporter: java-junit
 
   build-java:
     runs-on: ubuntu-latest
