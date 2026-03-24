@@ -73,3 +73,12 @@ jobs:
         continue-on-error: true
         with:
           category: "/language:cpp"
+          output: codeql-results
+
+      - name: Upload SARIF as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codeql-sarif
+          path: codeql-results/*.sarif
+          if-no-files-found: ignore

@@ -52,3 +52,7 @@ gtest_discover_tests(emulatemb)
 add_executable(pqcsecurity pqcsecurity.cxx)
 target_link_libraries(pqcsecurity rfb GTest::gtest_main)
 gtest_discover_tests(pqcsecurity)
+
+add_executable(pqc_handshake pqc_handshake.cxx)
+target_link_libraries(pqc_handshake rfb rdr core network GTest::gtest_main)
+gtest_discover_tests(pqc_handshake)

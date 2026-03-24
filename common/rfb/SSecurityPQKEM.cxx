@@ -78,6 +78,14 @@ core::StringParameter SSecurityPQKEM::signingAlgorithm
  "ML-DSA algorithm for server authentication (ML-DSA-44, ML-DSA-65, ML-DSA-87)",
  "ML-DSA-65");
 
+core::IntParameter SSecurityPQKEM::rekeyInterval
+("PQCRekeyInterval",
+ "Maximum session duration in seconds before requiring reconnection "
+ "for forward secrecy (0 = no limit). When reached, the server will "
+ "gracefully close the connection so the client can reconnect with "
+ "a fresh PQC key exchange.",
+ 0);
+
 PQCKeyStore SSecurityPQKEM::signingKey;
 
 static core::LogWriter vlog("SSecurityPQKEM");

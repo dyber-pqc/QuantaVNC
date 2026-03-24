@@ -51,6 +51,7 @@ namespace rfb {
     static core::BoolParameter requireUsername;
     static core::StringParameter signingKeyPath;
     static core::StringParameter signingAlgorithm;
+    static core::IntParameter rekeyInterval;
 
   private:
     void cleanup();

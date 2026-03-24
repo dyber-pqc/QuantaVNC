@@ -163,3 +163,28 @@ These types benefit from the maturity of TLS implementations while gaining post-
 5. **Side-channel hardening**: QuantaVNC relies on liboqs for ML-KEM implementation. The constant-time properties of the implementation depend on the liboqs build configuration and the target platform.
 
 6. **Increased bandwidth**: The hybrid key exchange adds approximately 4.5 KB to the initial handshake compared to classical key exchange. This is negligible for most connections but may be relevant for extremely constrained networks.
+
+## Session Rekeying
+
+### Forward Secrecy Model
+
+Each PQKEM connection uses **ephemeral** ML-KEM and X25519 keys generated fresh for every connection. This provides forward secrecy: compromise of long-term credentials (ML-DSA signing key, VNC password) does not allow decryption of previously recorded sessions.
+
+### Rekeying Strategy
+
+QuantaVNC uses **connection-based rekeying** rather than in-band rekeying:
+
+- The AES-256-EAX cipher uses a 128-bit counter (2^128 messages before wraparound — practically infinite)
+- For time-based forward secrecy, the server supports a `PQCRekeyInterval` parameter that limits session duration
+- When the interval expires, the server gracefully closes the connection
+- The client automatically reconnects, triggering a fresh PQC key exchange with new ephemeral keys
+- For PQTLS/PQX509 types, TLS 1.3's built-in KeyUpdate mechanism handles rekeying
+
+This approach is recommended by NIST for protocols with ephemeral key exchange, as it avoids the complexity and potential vulnerabilities of in-band rekeying protocols.
+
+### Configuration
+
+```bash
+# Limit sessions to 1 hour for forward secrecy (default: 0 = no limit)
+vncserver -PQCRekeyInterval=3600
+```
