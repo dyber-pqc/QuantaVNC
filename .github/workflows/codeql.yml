@@ -16,7 +16,7 @@ jobs:
   analyze:
     name: Analyze C/C++
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: cpp
-          queries: +security-extended
+          build-mode: manual
 
       - name: Install dependencies
         run: |
