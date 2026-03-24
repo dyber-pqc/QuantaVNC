@@ -9,7 +9,8 @@
 package com.tigervnc.rfb;
 
 import java.lang.reflect.*;
-import java.security.*;
+import java.security.Provider;
+import java.security.SecureRandom;
 
 /**
  * Bouncy Castle PQC provider using reflection for zero compile-time dependency.
@@ -21,16 +22,18 @@ public class BCPQCProvider implements PQCProvider {
     try {
       Class<?> bcProv = Class.forName(
         "org.bouncycastle.jce.provider.BouncyCastleProvider");
-      if (Security.getProvider("BC") == null)
-        Security.addProvider((Provider) bcProv.getDeclaredConstructor().newInstance());
-    } catch (Exception e) { /* not available */ }
+      Provider p = (Provider) bcProv.getDeclaredConstructor().newInstance();
+      if (java.security.Security.getProvider("BC") == null)
+        java.security.Security.addProvider(p);
+    } catch (java.lang.Exception e) { /* not available */ }
 
     try {
       Class<?> pqcProv = Class.forName(
         "org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider");
-      if (Security.getProvider("BCPQC") == null)
-        Security.addProvider((Provider) pqcProv.getDeclaredConstructor().newInstance());
-    } catch (Exception e) { /* not available */ }
+      Provider p = (Provider) pqcProv.getDeclaredConstructor().newInstance();
+      if (java.security.Security.getProvider("BCPQC") == null)
+        java.security.Security.addProvider(p);
+    } catch (java.lang.Exception e) { /* not available */ }
   }
 
   public static boolean isAvailable() {
@@ -39,7 +42,7 @@ public class BCPQCProvider implements PQCProvider {
       Class.forName("org.bouncycastle.pqc.crypto.mldsa.MLDSAParameters");
       Class.forName("org.bouncycastle.math.ec.rfc7748.X25519");
       return true;
-    } catch (ClassNotFoundException e) {
+    } catch (java.lang.ClassNotFoundException e) {
       return false;
     }
   }
@@ -94,7 +97,7 @@ public class BCPQCProvider implements PQCProvider {
         .invoke(result);
 
       return new KEMEncapsResult(ciphertext, sharedSecret);
-    } catch (Exception e) {
+    } catch (java.lang.Exception e) {
       throw new RuntimeException("BC ML-KEM encapsulation failed: " + e.getMessage(), e);
     }
   }
@@ -124,7 +127,7 @@ public class BCPQCProvider implements PQCProvider {
 
       return (Boolean) signerClass.getMethod("verifySignature", byte[].class, byte[].class)
         .invoke(signer, message, signature);
-    } catch (Exception e) {
+    } catch (java.lang.Exception e) {
       throw new RuntimeException("BC ML-DSA verify failed: " + e.getMessage(), e);
     }
   }
@@ -137,7 +140,7 @@ public class BCPQCProvider implements PQCProvider {
                         byte[].class, int.class, byte[].class, int.class)
         .invoke(null, scalar, 0, point, 0, result, 0);
       return result;
-    } catch (Exception e) {
+    } catch (java.lang.Exception e) {
       throw new RuntimeException("BC X25519 failed: " + e.getMessage(), e);
     }
   }

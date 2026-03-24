@@ -27,7 +27,7 @@ public class LiboqsPQCProvider implements PQCProvider {
       Object kem = kemClass.getConstructor(String.class).newInstance("ML-KEM-768");
       kemClass.getMethod("dispose").invoke(kem);
       return true;
-    } catch (Exception e) {
+    } catch (java.lang.Exception e) {
       return false;
     } catch (UnsatisfiedLinkError e) {
       return false;
@@ -74,13 +74,13 @@ public class LiboqsPQCProvider implements PQCProvider {
       byte[] sharedSecret = (byte[]) getRight.invoke(pair);
 
       return new KEMEncapsResult(ciphertext, sharedSecret);
-    } catch (Exception e) {
+    } catch (java.lang.Exception e) {
       throw new RuntimeException("liboqs ML-KEM encapsulation failed: " + e.getMessage(), e);
     } finally {
       if (kem != null) {
         try {
           kem.getClass().getMethod("dispose").invoke(kem);
-        } catch (Exception e) { /* ignore */ }
+        } catch (java.lang.Exception e) { /* ignore */ }
       }
     }
   }
@@ -96,13 +96,13 @@ public class LiboqsPQCProvider implements PQCProvider {
 
       Method verify = sigClass.getMethod("verify", byte[].class, byte[].class, byte[].class);
       return (Boolean) verify.invoke(sig, message, signature, publicKey);
-    } catch (Exception e) {
+    } catch (java.lang.Exception e) {
       throw new RuntimeException("liboqs ML-DSA verify failed: " + e.getMessage(), e);
     } finally {
       if (sig != null) {
         try {
           sig.getClass().getMethod("dispose").invoke(sig);
-        } catch (Exception e) { /* ignore */ }
+        } catch (java.lang.Exception e) { /* ignore */ }
       }
     }
   }
