@@ -32,6 +32,7 @@
 #include <rdr/AESOutStream.h>
 #include <rdr/RandomStream.h>
 
+#include <rfb/PQCAlgorithm.h>
 #include <rfb/SSecurityPQKEM.h>
 #include <rfb/SConnection.h>
 #include <rfb/Exception.h>
@@ -63,7 +64,7 @@ static core::LogWriter vlog("SSecurityPQKEM");
 SSecurityPQKEM::SSecurityPQKEM(SConnection* sc_, uint32_t _secType,
                                bool _isAllEncrypted)
   : SSecurity(sc_), state(SendPublicKeys),
-    isAllEncrypted(_isAllEncrypted), secType(_secType),
+    isAllEncrypted(_isAllEncrypted), secType(_secType), selectedAlg(0),
     kemPubKey(nullptr), kemSecretKey(nullptr), kemSharedSecret(nullptr),
     kemPubKeyLen(0), kemSecretKeyLen(0), kemSharedSecretLen(0),
     accessRights(AccessDefault),
@@ -164,10 +165,30 @@ void SSecurityPQKEM::generateAndSendKeys()
   rdr::OutStream* os = sc->getOutStream();
   rdr::RandomStream rs;
 
-  // --- ML-KEM-768 keypair ---
-  OQS_KEM* kem = OQS_KEM_new(OQS_KEM_alg_ml_kem_768);
+  // --- Probe supported algorithms (strongest first) ---
+  std::vector<uint8_t> supported = pqkemProbeSupported();
+  if (supported.empty())
+    throw std::runtime_error("No PQC KEM algorithms available in liboqs");
+
+  // Server picks the strongest available algorithm
+  selectedAlg = supported[0];
+  const char* oqsName = pqkemAlgOQSName(selectedAlg);
+
+  vlog.info("PQC algorithm negotiation: offering %d algorithm(s), "
+            "selected %s", (int)supported.size(),
+            pqkemAlgDisplayName(selectedAlg));
+
+  // --- Send algorithm list ---
+  // Wire format: U8(numAlgorithms) || U8(algId)... || U8(selectedAlg)
+  os->writeU8((uint8_t)supported.size());
+  for (uint8_t algId : supported)
+    os->writeU8(algId);
+  os->writeU8(selectedAlg);
+
+  // --- ML-KEM keypair using selected algorithm ---
+  OQS_KEM* kem = OQS_KEM_new(oqsName);
   if (!kem)
-    throw std::runtime_error("Failed to initialise ML-KEM-768");
+    throw std::runtime_error("Failed to initialise KEM algorithm");
 
   kemPubKeyLen = kem->length_public_key;
   kemSecretKeyLen = kem->length_secret_key;
@@ -179,7 +200,7 @@ void SSecurityPQKEM::generateAndSendKeys()
 
   if (OQS_KEM_keypair(kem, kemPubKey, kemSecretKey) != OQS_SUCCESS) {
     OQS_KEM_free(kem);
-    throw std::runtime_error("ML-KEM-768 keypair generation failed");
+    throw std::runtime_error("KEM keypair generation failed");
   }
   OQS_KEM_free(kem);
 
@@ -221,11 +242,11 @@ bool SSecurityPQKEM::readEncapsulation()
   // Read client X25519 public key
   is->readBytes(clientX25519Public, 32);
 
-  // --- ML-KEM decapsulation ---
-  OQS_KEM* kem = OQS_KEM_new(OQS_KEM_alg_ml_kem_768);
+  // --- ML-KEM decapsulation using negotiated algorithm ---
+  OQS_KEM* kem = OQS_KEM_new(pqkemAlgOQSName(selectedAlg));
   if (!kem) {
     delete[] ciphertext;
-    throw std::runtime_error("Failed to initialise ML-KEM-768");
+    throw std::runtime_error("Failed to initialise KEM algorithm");
   }
 
   if (ctLen != kem->length_ciphertext) {
@@ -253,8 +274,9 @@ bool SSecurityPQKEM::readEncapsulation()
   {
     struct sha256_ctx ctx;
 
-    // Server hash
+    // Server hash (includes algorithm ID to prevent downgrade attacks)
     sha256_init(&ctx);
+    sha256_update(&ctx, 1, &selectedAlg);
     sha256_update(&ctx, kemPubKeyLen, kemPubKey);
     sha256_update(&ctx, 32, serverX25519Public);
     sha256_update(&ctx, ctLen, ciphertext);
@@ -263,6 +285,7 @@ bool SSecurityPQKEM::readEncapsulation()
 
     // Expected client hash
     sha256_init(&ctx);
+    sha256_update(&ctx, 1, &selectedAlg);
     sha256_update(&ctx, ctLen, ciphertext);
     sha256_update(&ctx, 32, clientX25519Public);
     sha256_update(&ctx, kemPubKeyLen, kemPubKey);
@@ -280,20 +303,22 @@ void SSecurityPQKEM::setCipher()
   rawis = sc->getInStream();
   rawos = sc->getOutStream();
 
-  // readKey = SHA-256(kemSharedSecret || ecdhSharedSecret || "QuantaVNC-PQKEM-C2S")
+  // readKey = SHA-256(kemSharedSecret || ecdhSharedSecret || U8(selectedAlg) || "QuantaVNC-PQKEM-C2S")
   // Server reads what client sends, so readKey uses the C2S label.
+  // The algorithm ID is included to cryptographically bind the negotiated algorithm.
   uint8_t readKey[32];
   {
     struct sha256_ctx ctx;
     sha256_init(&ctx);
     sha256_update(&ctx, kemSharedSecretLen, kemSharedSecret);
     sha256_update(&ctx, 32, ecdhSharedSecret);
+    sha256_update(&ctx, 1, &selectedAlg);
     const char* label = "QuantaVNC-PQKEM-C2S";
     sha256_update(&ctx, strlen(label), (const uint8_t*)label);
     sha256_digest(&ctx, 32, readKey);
   }
 
-  // writeKey = SHA-256(kemSharedSecret || ecdhSharedSecret || "QuantaVNC-PQKEM-S2C")
+  // writeKey = SHA-256(kemSharedSecret || ecdhSharedSecret || U8(selectedAlg) || "QuantaVNC-PQKEM-S2C")
   // Server writes to client, so writeKey uses the S2C label.
   uint8_t writeKey[32];
   {
@@ -301,6 +326,7 @@ void SSecurityPQKEM::setCipher()
     sha256_init(&ctx);
     sha256_update(&ctx, kemSharedSecretLen, kemSharedSecret);
     sha256_update(&ctx, 32, ecdhSharedSecret);
+    sha256_update(&ctx, 1, &selectedAlg);
     const char* label = "QuantaVNC-PQKEM-S2C";
     sha256_update(&ctx, strlen(label), (const uint8_t*)label);
     sha256_digest(&ctx, 32, writeKey);

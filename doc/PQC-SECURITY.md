@@ -51,25 +51,29 @@ The derived shared secret protects the VNC session using **AES-256-EAX** authent
 
 ## Protocol Description (PQKEM Security Types)
 
-The PQKEM security type performs key exchange directly within the RFB protocol, without relying on TLS. The handshake proceeds as follows:
+The PQKEM security type performs key exchange directly within the RFB protocol, without relying on TLS. The handshake includes algorithm negotiation and proceeds as follows:
 
 ```
 Client                                         Server
   |                                               |
   |  ---- SecurityType: PQKEMVnc ---------------> |
   |                                               |
-  |  <--- ML-KEM-768 public key (pk_pq) --------- |
+  |  <--- U8(numAlgorithms)  ---------------------- |  Algorithm
+  |  <--- U8(algId) x numAlgorithms  ------------- |  negotiation
+  |  <--- U8(selectedAlg)  ----------------------- |
+  |                                               |
+  |  <--- U16(pubKeyLen) || pk_pq  --------------- |  Key exchange
   |  <--- X25519 public key (pk_x25519) ---------- |
   |                                               |
   |  ML-KEM encapsulate: (ct_pq, ss_pq) = Encaps(pk_pq)
   |  X25519 key agreement: ss_x25519 = X25519(sk, pk_x25519)
   |                                               |
-  |  ---- ML-KEM ciphertext (ct_pq) ------------> |
+  |  ---- U16(ctLen) || ct_pq  -----------------> |
   |  ---- X25519 public key (client) -----------> |
   |                                               |
   |                   Server decapsulates and derives same secrets
   |                                               |
-  |  Both sides: K = KDF(ss_pq || ss_x25519 || context)
+  |  Both sides: K = KDF(ss_pq || ss_x25519 || algId || context)
   |                                               |
   |  ==== AES-256-EAX encrypted channel ========= |
   |                                               |
@@ -77,25 +81,44 @@ Client                                         Server
   |   encrypted channel if required)              |
 ```
 
+### Algorithm Negotiation
+
+The server probes liboqs at runtime to determine which ML-KEM algorithms are available:
+
+| Algorithm ID | Algorithm | NIST Level | Public Key | Ciphertext |
+|-------------|-----------|------------|------------|------------|
+| 1 | ML-KEM-512 | Level 1 | 800 bytes | 768 bytes |
+| 2 | ML-KEM-768 | Level 3 | 1,184 bytes | 1,088 bytes |
+| 3 | ML-KEM-1024 | Level 5 | 1,568 bytes | 1,568 bytes |
+
+The server sends its supported algorithms in preference order (strongest first), then its selected algorithm. The server generates keys for the selected algorithm. The client verifies it supports the selected algorithm or aborts the connection.
+
+The algorithm ID is cryptographically bound into both the key derivation and the transcript hashes, preventing algorithm downgrade attacks.
+
+### PQC Mode
+
+QuantaVNC supports three PQC modes:
+
+- **preferred** (default): PQC security types are offered first, with classical types as fallback
+- **required**: Only PQC security types are accepted; connections fail if PQC is unavailable
+- **off**: PQC security types are disabled; only classical types are used
+
 ### Key Derivation
 
-The combined shared secret is derived using HKDF (RFC 5869):
+Separate keys are derived for each direction using SHA-256:
 
 ```
-K = HKDF-SHA256(
-    salt   = "QuantaVNC-PQKEM-v1",
-    IKM    = ss_pq || ss_x25519,
-    info   = "rfb-channel-key" || client_nonce || server_nonce,
-    length = 32
-)
+C2S_key = SHA-256(ss_pq || ss_x25519 || U8(algId) || "QuantaVNC-PQKEM-C2S")
+S2C_key = SHA-256(ss_pq || ss_x25519 || U8(algId) || "QuantaVNC-PQKEM-S2C")
 ```
 
 Where:
-- `ss_pq` is the ML-KEM-768 shared secret (32 bytes)
+- `ss_pq` is the ML-KEM shared secret (32 bytes)
 - `ss_x25519` is the X25519 shared secret (32 bytes)
-- `client_nonce` and `server_nonce` are 32-byte random values exchanged during the handshake
+- `algId` is the negotiated algorithm ID (1 byte) -- this binds the algorithm choice to the key derivation, preventing downgrade attacks
+- Direction labels ensure the client-to-server and server-to-client keys are distinct
 
-The key derivation produces a 256-bit key used for AES-256-EAX encryption of all subsequent RFB protocol messages.
+Each key derivation produces a 256-bit key used for AES-256-EAX authenticated encryption of RFB protocol messages in the corresponding direction.
 
 ## PQTLS / PQX509 Security Types
 
@@ -125,7 +148,7 @@ These types benefit from the maturity of TLS implementations while gaining post-
 
 3. **No quantum-safe password authentication**: VNC password authentication (DES-based challenge-response) and Plain authentication transmit credentials inside the encrypted channel. While the channel is quantum-safe, the underlying auth protocols are unchanged.
 
-4. **Algorithm agility**: QuantaVNC currently hardcodes ML-KEM-768. If a significant weakness is found in ML-KEM, a software update will be required. Future versions may support algorithm negotiation.
+4. **Algorithm agility**: QuantaVNC supports ML-KEM-512, ML-KEM-768, and ML-KEM-1024 with runtime algorithm negotiation. The server selects the strongest algorithm available in its liboqs installation and communicates this to the client during the handshake.
 
 5. **Side-channel hardening**: QuantaVNC relies on liboqs for ML-KEM implementation. The constant-time properties of the implementation depend on the liboqs build configuration and the target platform.
 

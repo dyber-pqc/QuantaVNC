@@ -22,6 +22,7 @@
 
 #include <rfb/CSecurity.h>
 #include <rfb/Security.h>
+#include <rfb/PQCAlgorithm.h>
 
 namespace rdr {
   class InStream;
@@ -57,6 +58,7 @@ namespace rfb {
     bool isAllEncrypted;
     uint32_t secType;
     uint8_t subtype;
+    uint8_t selectedAlg;
 
     // ML-KEM
     uint8_t* serverKEMPubKey;

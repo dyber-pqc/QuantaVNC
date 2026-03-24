@@ -21,6 +21,7 @@
 #include <oqs/oqs.h>
 
 #include <rfb/SSecurity.h>
+#include <rfb/PQCAlgorithm.h>
 
 namespace core {
   class BoolParameter;
@@ -63,6 +64,7 @@ namespace rfb {
     int state;
     bool isAllEncrypted;
     uint32_t secType;
+    uint8_t selectedAlg;
 
     // ML-KEM
     uint8_t* kemPubKey;

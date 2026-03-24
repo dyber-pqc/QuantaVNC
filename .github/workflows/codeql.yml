@@ -1,0 +1,73 @@
+name: CodeQL Security Analysis
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '25 7 * * 1'
+
+permissions:
+  security-events: write
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze C/C++
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: cpp
+          queries: +security-extended
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfltk1.3-dev fluid gettext appstream
+          sudo apt-get install -y libpixman-1-dev libjpeg-turbo8-dev
+          sudo apt-get install -y libgnutls28-dev nettle-dev libgmp-dev
+          sudo apt-get install -y libxtst-dev libxdamage-dev libxfixes-dev libxrandr-dev libpam-dev
+          sudo apt-get install -y libavcodec-dev libavutil-dev libswscale-dev
+          sudo apt-get install -y uuid-dev libglib2.0-dev libpipewire-0.3-dev
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y cmake ninja-build
+
+      - name: Build and install liboqs
+        run: |
+          git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
+          cd /tmp/liboqs && mkdir build && cd build
+          cmake -GNinja \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_SHARED_LIBS=ON \
+            -DOQS_BUILD_ONLY_LIB=ON ..
+          ninja
+          sudo ninja install
+          sudo ldconfig
+
+      - name: Configure
+        run: |
+          cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_NLS=ON \
+            -DENABLE_H264=ON \
+            -DENABLE_GNUTLS=ON \
+            -DENABLE_NETTLE=ON \
+            -DENABLE_PQC=ON \
+            -DBUILD_VIEWER=ON \
+            -S . -B build
+
+      - name: Build
+        working-directory: build
+        run: make -j$(nproc)
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:cpp"

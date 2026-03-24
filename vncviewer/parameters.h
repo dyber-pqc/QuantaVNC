@@ -84,7 +84,7 @@ extern core::StringParameter via;
 #endif
 
 #ifdef HAVE_LIBOQS
-extern core::BoolParameter pqcRequired;
+extern core::StringParameter pqcMode;
 #endif
 
 void saveViewerParameters(const char *filename, const char *servername=nullptr);

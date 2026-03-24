@@ -23,7 +23,12 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #include <list>
+
+#ifdef WIN32
+#define strcasecmp _stricmp
+#endif
 
 #include <core/string.h>
 
@@ -310,7 +315,15 @@ void OptionsDialog::loadOptions(void)
 #endif
 
 #ifdef HAVE_LIBOQS
-  pqcRequiredCheckbox->value(pqcRequired);
+  {
+    const char* mode = pqcMode;
+    if (strcasecmp(mode, "required") == 0)
+      pqcModeChoice->value(1);
+    else if (strcasecmp(mode, "off") == 0)
+      pqcModeChoice->value(2);
+    else
+      pqcModeChoice->value(0);  // preferred (default)
+  }
 #endif
 #endif
 
@@ -465,7 +478,12 @@ void OptionsDialog::storeOptions(void)
   rfb::SecurityClient::secTypes.setParam(security.ToString());
 
 #ifdef HAVE_LIBOQS
-  pqcRequired.setParam(pqcRequiredCheckbox->value());
+  {
+    static const char* modes[] = { "preferred", "required", "off" };
+    int idx = pqcModeChoice->value();
+    if (idx >= 0 && idx < 3)
+      pqcMode.setParam(modes[idx]);
+  }
 #endif
 #endif
 
@@ -896,11 +914,13 @@ void OptionsDialog::createSecurityPage(int tx, int ty, int tw, int th)
     tx += INDENT;
     ty += TIGHT_MARGIN;
 
-    pqcRequiredCheckbox = new Fl_Check_Button(LBLRIGHT(tx, ty,
-                                                       CHECK_MIN_WIDTH,
-                                                       CHECK_HEIGHT,
-                                                       _("Require post-quantum key exchange")));
-    ty += CHECK_HEIGHT + TIGHT_MARGIN;
+    pqcModeChoice = new Fl_Choice(LBLLEFT(tx, ty,
+                                          150, INPUT_HEIGHT,
+                                          _("PQC Mode")));
+    pqcModeChoice->add(_("Preferred"));
+    pqcModeChoice->add(_("Required"));
+    pqcModeChoice->add(_("Off"));
+    ty += INPUT_HEIGHT + TIGHT_MARGIN;
   }
 
   ty -= TIGHT_MARGIN;

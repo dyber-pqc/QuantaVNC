@@ -18,6 +18,9 @@
 #include <gtest/gtest.h>
 
 #include <rfb/Security.h>
+#ifdef HAVE_LIBOQS
+#include <rfb/PQCAlgorithm.h>
+#endif
 
 // Test that PQC security type constants are defined correctly
 TEST(PQCSecurity, TypeConstants) {
@@ -133,3 +136,62 @@ TEST(PQCSecurity, AllTypesDistinct) {
     }
   }
 }
+
+// --- Algorithm Negotiation Tests ---
+
+#ifdef HAVE_LIBOQS
+
+TEST(PQCAlgorithm, AlgorithmIDConstants) {
+  EXPECT_EQ(rfb::pqkemAlgMLKEM512, 1);
+  EXPECT_EQ(rfb::pqkemAlgMLKEM768, 2);
+  EXPECT_EQ(rfb::pqkemAlgMLKEM1024, 3);
+}
+
+TEST(PQCAlgorithm, OQSNameMapping) {
+  // Valid algorithms return non-null liboqs strings
+  EXPECT_NE(rfb::pqkemAlgOQSName(rfb::pqkemAlgMLKEM512), nullptr);
+  EXPECT_NE(rfb::pqkemAlgOQSName(rfb::pqkemAlgMLKEM768), nullptr);
+  EXPECT_NE(rfb::pqkemAlgOQSName(rfb::pqkemAlgMLKEM1024), nullptr);
+
+  // Invalid algorithm returns null
+  EXPECT_EQ(rfb::pqkemAlgOQSName(0), nullptr);
+  EXPECT_EQ(rfb::pqkemAlgOQSName(255), nullptr);
+}
+
+TEST(PQCAlgorithm, DisplayNames) {
+  EXPECT_STREQ(rfb::pqkemAlgDisplayName(rfb::pqkemAlgMLKEM512), "ML-KEM-512");
+  EXPECT_STREQ(rfb::pqkemAlgDisplayName(rfb::pqkemAlgMLKEM768), "ML-KEM-768");
+  EXPECT_STREQ(rfb::pqkemAlgDisplayName(rfb::pqkemAlgMLKEM1024), "ML-KEM-1024");
+  EXPECT_STREQ(rfb::pqkemAlgDisplayName(0), "Unknown");
+}
+
+TEST(PQCAlgorithm, ProbeSupported) {
+  auto supported = rfb::pqkemProbeSupported();
+
+  // liboqs should support at least ML-KEM-768
+  EXPECT_FALSE(supported.empty());
+
+  // All returned IDs should be valid
+  for (auto algId : supported) {
+    EXPECT_NE(rfb::pqkemAlgOQSName(algId), nullptr)
+      << "Probed algorithm ID " << (int)algId << " has no OQS name";
+  }
+
+  // Should be ordered strongest first (1024, 768, 512)
+  if (supported.size() >= 2) {
+    for (size_t i = 0; i < supported.size() - 1; i++) {
+      EXPECT_GT(supported[i], supported[i + 1])
+        << "Algorithms not in strongest-first order";
+    }
+  }
+
+  // ML-KEM-768 should always be available
+  bool has768 = false;
+  for (auto algId : supported) {
+    if (algId == rfb::pqkemAlgMLKEM768)
+      has768 = true;
+  }
+  EXPECT_TRUE(has768) << "ML-KEM-768 not found in supported algorithms";
+}
+
+#endif // HAVE_LIBOQS

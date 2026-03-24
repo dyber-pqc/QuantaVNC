@@ -100,7 +100,7 @@ if (NETTLE_FOUND)
 endif()
 
 if(OQS_FOUND)
-  target_sources(rfb PRIVATE CSecurityPQKEM.cxx SSecurityPQKEM.cxx)
+  target_sources(rfb PRIVATE PQCAlgorithm.cxx CSecurityPQKEM.cxx SSecurityPQKEM.cxx)
   target_include_directories(rfb SYSTEM PUBLIC ${OQS_INCLUDE_DIRS})
   target_link_libraries(rfb ${OQS_LIBRARIES})
 endif()

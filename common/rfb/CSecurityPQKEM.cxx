@@ -30,6 +30,7 @@
 #include <nettle/sha2.h>
 #include <nettle/curve25519.h>
 
+#include <rfb/PQCAlgorithm.h>
 #include <rfb/CSecurityPQKEM.h>
 #include <rfb/CConnection.h>
 #include <rfb/Exception.h>
@@ -54,7 +55,7 @@ static core::LogWriter vlog("CSecurityPQKEM");
 CSecurityPQKEM::CSecurityPQKEM(CConnection* cc_, uint32_t _secType,
                                bool _isAllEncrypted)
   : CSecurity(cc_), state(ReadServerPublicKeys),
-    isAllEncrypted(_isAllEncrypted), secType(_secType), subtype(0),
+    isAllEncrypted(_isAllEncrypted), secType(_secType), subtype(0), selectedAlg(0),
     serverKEMPubKey(nullptr), kemCiphertext(nullptr),
     kemSharedSecret(nullptr),
     kemPubKeyLen(0), kemCiphertextLen(0), kemSharedSecretLen(0),
@@ -137,14 +138,41 @@ bool CSecurityPQKEM::readServerPublicKeys()
 {
   rdr::InStream* is = cc->getInStream();
 
-  if (!is->hasData(2))
+  // Need at least 1 byte for algorithm count
+  if (!is->hasData(1))
     return false;
   is->setRestorePoint();
 
+  // --- Read algorithm negotiation ---
+  // Wire format: U8(numAlgorithms) || U8(algId)... || U8(selectedAlg)
+  uint8_t numAlgs = is->readU8();
+  if (numAlgs == 0 || numAlgs > 16)
+    throw protocol_error("Invalid PQC algorithm count");
+
+  // Need algorithm list + selected byte + 2 bytes for key length
+  if (!is->hasDataOrRestore(numAlgs + 1 + 2))
+    return false;
+
+  std::vector<uint8_t> serverAlgs(numAlgs);
+  for (uint8_t i = 0; i < numAlgs; i++)
+    serverAlgs[i] = is->readU8();
+
+  selectedAlg = is->readU8();
+
+  // Verify client supports the selected algorithm
+  OQS_KEM* testKem = OQS_KEM_new(pqkemAlgOQSName(selectedAlg));
+  if (!testKem)
+    throw protocol_error("Server selected unsupported PQC algorithm");
+  OQS_KEM_free(testKem);
+
+  vlog.info("PQC algorithm negotiation: server selected %s "
+            "(%d algorithm(s) offered)",
+            pqkemAlgDisplayName(selectedAlg), (int)numAlgs);
+
+  // --- Read public keys ---
   uint16_t pubKeyLen = is->readU16();
   kemPubKeyLen = pubKeyLen;
 
-  // ML-KEM-768 public key is 1184 bytes
   if (kemPubKeyLen == 0 || kemPubKeyLen > 4096)
     throw protocol_error("Invalid KEM public key length");
 
@@ -191,10 +219,10 @@ void CSecurityPQKEM::writeEncapsulation()
 {
   rdr::OutStream* os = cc->getOutStream();
 
-  // --- ML-KEM encapsulation ---
-  OQS_KEM* kem = OQS_KEM_new(OQS_KEM_alg_ml_kem_768);
+  // --- ML-KEM encapsulation using negotiated algorithm ---
+  OQS_KEM* kem = OQS_KEM_new(pqkemAlgOQSName(selectedAlg));
   if (kem == nullptr)
-    throw std::runtime_error("Failed to initialize ML-KEM-768");
+    throw std::runtime_error("Failed to initialize KEM algorithm");
 
   kemCiphertextLen = kem->length_ciphertext;
   kemSharedSecretLen = kem->length_shared_secret;
@@ -243,26 +271,29 @@ void CSecurityPQKEM::setCipher()
   rawos = cc->getOutStream();
 
   // Derive client->server key:
-  //   SHA-256(kemSharedSecret || ecdhSharedSecret || "QuantaVNC-PQKEM-C2S")
+  //   SHA-256(kemSharedSecret || ecdhSharedSecret || U8(selectedAlg) || "QuantaVNC-PQKEM-C2S")
+  // The algorithm ID is included to cryptographically bind the negotiated algorithm.
   uint8_t c2sKey[32];
   {
     struct sha256_ctx ctx;
     sha256_init(&ctx);
     sha256_update(&ctx, kemSharedSecretLen, kemSharedSecret);
     sha256_update(&ctx, 32, ecdhSharedSecret);
+    sha256_update(&ctx, 1, &selectedAlg);
     const char* label = "QuantaVNC-PQKEM-C2S";
     sha256_update(&ctx, strlen(label), (const uint8_t*)label);
     sha256_digest(&ctx, 32, c2sKey);
   }
 
   // Derive server->client key:
-  //   SHA-256(kemSharedSecret || ecdhSharedSecret || "QuantaVNC-PQKEM-S2C")
+  //   SHA-256(kemSharedSecret || ecdhSharedSecret || U8(selectedAlg) || "QuantaVNC-PQKEM-S2C")
   uint8_t s2cKey[32];
   {
     struct sha256_ctx ctx;
     sha256_init(&ctx);
     sha256_update(&ctx, kemSharedSecretLen, kemSharedSecret);
     sha256_update(&ctx, 32, ecdhSharedSecret);
+    sha256_update(&ctx, 1, &selectedAlg);
     const char* label = "QuantaVNC-PQKEM-S2C";
     sha256_update(&ctx, strlen(label), (const uint8_t*)label);
     sha256_digest(&ctx, 32, s2cKey);
@@ -282,20 +313,18 @@ void CSecurityPQKEM::setCipher()
 
 void CSecurityPQKEM::writeHash()
 {
-  // Hash over all exchanged key material:
-  //   SHA-256(serverKEMPubKey || serverX25519Public ||
-  //           kemCiphertext || clientX25519Public ||
-  //           kemSharedSecret || ecdhSharedSecret)
-  // Sent from client perspective (client sends first)
+  // Hash over algorithm ID and all exchanged key material:
+  //   SHA-256(U8(selectedAlg) || kemCiphertext || clientX25519Public ||
+  //           serverKEMPubKey || serverX25519Public)
+  // Algorithm ID is included to prevent downgrade attacks.
   uint8_t hash[32];
   struct sha256_ctx ctx;
   sha256_init(&ctx);
-  sha256_update(&ctx, kemPubKeyLen, serverKEMPubKey);
-  sha256_update(&ctx, 32, serverX25519Public);
+  sha256_update(&ctx, 1, &selectedAlg);
   sha256_update(&ctx, kemCiphertextLen, kemCiphertext);
   sha256_update(&ctx, 32, clientX25519Public);
-  sha256_update(&ctx, kemSharedSecretLen, kemSharedSecret);
-  sha256_update(&ctx, 32, ecdhSharedSecret);
+  sha256_update(&ctx, kemPubKeyLen, serverKEMPubKey);
+  sha256_update(&ctx, 32, serverX25519Public);
   sha256_digest(&ctx, 32, hash);
 
   raos->writeBytes(hash, 32);
@@ -310,19 +339,17 @@ bool CSecurityPQKEM::readHash()
   uint8_t hash[32];
   rais->readBytes(hash, 32);
 
-  // Server hash is computed with reversed order of client/server components:
-  //   SHA-256(kemCiphertext || clientX25519Public ||
-  //           serverKEMPubKey || serverX25519Public ||
-  //           kemSharedSecret || ecdhSharedSecret)
+  // Server hash includes algorithm ID:
+  //   SHA-256(U8(selectedAlg) || serverKEMPubKey || serverX25519Public ||
+  //           kemCiphertext || clientX25519Public)
   uint8_t realHash[32];
   struct sha256_ctx ctx;
   sha256_init(&ctx);
-  sha256_update(&ctx, kemCiphertextLen, kemCiphertext);
-  sha256_update(&ctx, 32, clientX25519Public);
+  sha256_update(&ctx, 1, &selectedAlg);
   sha256_update(&ctx, kemPubKeyLen, serverKEMPubKey);
   sha256_update(&ctx, 32, serverX25519Public);
-  sha256_update(&ctx, kemSharedSecretLen, kemSharedSecret);
-  sha256_update(&ctx, 32, ecdhSharedSecret);
+  sha256_update(&ctx, kemCiphertextLen, kemCiphertext);
+  sha256_update(&ctx, 32, clientX25519Public);
   sha256_digest(&ctx, 32, realHash);
 
   if (memcmp(hash, realHash, 32) != 0)

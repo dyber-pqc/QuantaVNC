@@ -244,10 +244,11 @@ core::StringParameter
 #endif
 
 #ifdef HAVE_LIBOQS
-core::BoolParameter
-  pqcRequired("PQCRequired",
-              "Require post-quantum cryptography for connections",
-              false);
+core::StringParameter
+  pqcMode("PQCMode",
+          "Post-quantum cryptography mode: required (PQC only), "
+          "preferred (PQC first, classical fallback), off (no PQC)",
+          "preferred");
 #endif
 
 static const char* IDENTIFIER_STRING = "QuantaVNC Configuration file Version 1.0";
@@ -264,7 +265,7 @@ static core::VoidParameter* parameterArray[] = {
 #endif // HAVE_GNUTLS
   &rfb::SecurityClient::secTypes,
 #ifdef HAVE_LIBOQS
-  &pqcRequired,
+  &pqcMode,
 #endif
   /* Misc. */
   &reconnectOnError,

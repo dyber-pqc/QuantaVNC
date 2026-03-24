@@ -124,7 +124,7 @@ protected:
 
 #ifdef HAVE_LIBOQS
   /* Post-Quantum Cryptography */
-  Fl_Check_Button *pqcRequiredCheckbox;
+  Fl_Choice *pqcModeChoice;
 #endif
 
   /* Input */
