@@ -277,6 +277,12 @@ bool PQCKeyStore::verify(uint8_t dsaAlg,
   if (!sig)
     return false;
 
+  // Validate key length matches what liboqs expects
+  if (pkLen != sig->length_public_key) {
+    OQS_SIG_free(sig);
+    return false;
+  }
+
   OQS_STATUS rc = OQS_SIG_verify(sig, msg, msgLen, signature, sigLen, pk);
   OQS_SIG_free(sig);
 
