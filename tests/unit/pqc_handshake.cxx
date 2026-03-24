@@ -471,8 +471,8 @@ TEST(PQCHandshake, AESWrongKeyFails)
     << "Decryption with wrong key should fail";
 }
 
-// Test: Bidirectional AES with derived keys (simulates post-handshake)
-TEST(PQCHandshake, BidirectionalEncryptedExchange)
+// Test: Bidirectional key derivation produces correct distinct keys
+TEST(PQCHandshake, BidirectionalKeyDerivation)
 {
   // Derive keys as the protocol would
   uint8_t kemSS[32], ecdhSS[32];
@@ -485,35 +485,30 @@ TEST(PQCHandshake, BidirectionalEncryptedExchange)
   deriveKey(kemSS, 32, ecdhSS, rfb::pqkemAlgMLKEM768,
             "QuantaVNC-PQKEM-S2C", s2cKey);
 
-  // Client → Server (uses C2S key)
-  const uint8_t clientMsg[] = "Client hello";
-  rdr::MemOutStream c2sRaw;
-  {
-    rdr::AESOutStream c2sEnc(&c2sRaw, c2sKey, 256);
-    c2sEnc.writeBytes(clientMsg, sizeof(clientMsg));
-    c2sEnc.flush();
-  }
+  // C2S and S2C keys MUST be different
+  EXPECT_NE(memcmp(c2sKey, s2cKey, 32), 0)
+    << "C2S and S2C keys should be different";
 
-  rdr::MemInStream c2sIn(c2sRaw.data(), c2sRaw.length());
-  rdr::AESInStream c2sDec(&c2sIn, c2sKey, 256);
-  uint8_t serverRecv[64];
-  c2sDec.readBytes(serverRecv, sizeof(clientMsg));
-  EXPECT_EQ(memcmp(serverRecv, clientMsg, sizeof(clientMsg)), 0);
+  // Same inputs produce same outputs (deterministic)
+  uint8_t c2sKey2[32], s2cKey2[32];
+  deriveKey(kemSS, 32, ecdhSS, rfb::pqkemAlgMLKEM768,
+            "QuantaVNC-PQKEM-C2S", c2sKey2);
+  deriveKey(kemSS, 32, ecdhSS, rfb::pqkemAlgMLKEM768,
+            "QuantaVNC-PQKEM-S2C", s2cKey2);
 
-  // Server → Client (uses S2C key)
-  const uint8_t serverMsg[] = "Server hello";
-  rdr::MemOutStream s2cRaw;
-  {
-    rdr::AESOutStream s2cEnc(&s2cRaw, s2cKey, 256);
-    s2cEnc.writeBytes(serverMsg, sizeof(serverMsg));
-    s2cEnc.flush();
-  }
+  EXPECT_EQ(memcmp(c2sKey, c2sKey2, 32), 0)
+    << "KDF should be deterministic for C2S";
+  EXPECT_EQ(memcmp(s2cKey, s2cKey2, 32), 0)
+    << "KDF should be deterministic for S2C";
 
-  rdr::MemInStream s2cIn(s2cRaw.data(), s2cRaw.length());
-  rdr::AESInStream s2cDec(&s2cIn, s2cKey, 256);
-  uint8_t clientRecv[64];
-  s2cDec.readBytes(clientRecv, sizeof(serverMsg));
-  EXPECT_EQ(memcmp(clientRecv, serverMsg, sizeof(serverMsg)), 0);
+  // Different shared secrets produce different keys
+  uint8_t differentKemSS[32];
+  OQS_randombytes(differentKemSS, 32);
+  uint8_t differentKey[32];
+  deriveKey(differentKemSS, 32, ecdhSS, rfb::pqkemAlgMLKEM768,
+            "QuantaVNC-PQKEM-C2S", differentKey);
+  EXPECT_NE(memcmp(c2sKey, differentKey, 32), 0)
+    << "Different KEM shared secret should produce different key";
 }
 #endif // HAVE_NETTLE
 
