@@ -72,18 +72,35 @@ public class SecurityClient extends Security {
     case Security.secTypeRAne256:
       return (new CSecurityRSAAES(secType, 256, false));
 
-    // QuantaVNC PQC types (stub -- requires native client)
+    // QuantaVNC PQC-KEM types (ML-KEM + X25519 hybrid key exchange)
     case Security.secTypePQKEMNone:
+      return (new CSecurityPQKEM(secTypePQKEMNone, true));
     case Security.secTypePQKEMVnc:
+      return (new CSecurityPQKEM(secTypePQKEMVnc, true));
     case Security.secTypePQKEMPlain:
+      return (new CSecurityPQKEM(secTypePQKEMPlain, true));
+
+    // QuantaVNC PQC-TLS types (PQC + TLS stack)
     case Security.secTypePQTLSNone:
+      return (new CSecurityStack(secTypePQTLSNone, "PQ-TLS with no password",
+                  new CSecurityTLS(true), null));
     case Security.secTypePQTLSVnc:
+      return (new CSecurityStack(secTypePQTLSVnc, "PQ-TLS with VNCAuth",
+                  new CSecurityTLS(true), new CSecurityVncAuth()));
     case Security.secTypePQTLSPlain:
+      return (new CSecurityStack(secTypePQTLSPlain, "PQ-TLS with Username/Password",
+                  new CSecurityTLS(true), new CSecurityPlain()));
+
+    // QuantaVNC PQC-X509 types (PQC + X509 stack)
     case Security.secTypePQX509None:
+      return (new CSecurityStack(secTypePQX509None, "PQ-X509 with no password",
+                  new CSecurityTLS(false), null));
     case Security.secTypePQX509Vnc:
+      return (new CSecurityStack(secTypePQX509Vnc, "PQ-X509 with VNCAuth",
+                  new CSecurityTLS(false), new CSecurityVncAuth()));
     case Security.secTypePQX509Plain:
-      throw new Exception("Server requires post-quantum cryptography (PQC). " +
-        "Please use the QuantaVNC native client: https://github.com/dyber-pqc/QuantaVNC");
+      return (new CSecurityStack(secTypePQX509Plain, "PQ-X509 with Username/Password",
+                  new CSecurityTLS(false), new CSecurityPlain()));
 
     default:
       throw new Exception("Security type not supported");
@@ -98,7 +115,7 @@ public class SecurityClient extends Security {
 
   public static StringParameter secTypes
   = new StringParameter("SecurityTypes",
-                        "Specify which security scheme to use (None, VncAuth, Plain, Ident, TLSNone, TLSVnc, TLSPlain, TLSIdent, X509None, X509Vnc, X509Plain, X509Ident, RA2, RA2ne, RA2_256, RA2ne_256)",
-                        "X509Ident,X509Plain,TLSIdent,TLSPlain,X509Vnc,TLSVnc,X509None,TLSNone,Ident,RA2_256,RA2,RA2ne_256,RA2ne,VncAuth,None", Configuration.ConfigurationObject.ConfViewer);
+                        "Specify which security scheme to use (PQKEMPlain, PQKEMVnc, PQKEMNone, PQTLSPlain, PQTLSVnc, PQTLSNone, PQX509Plain, PQX509Vnc, PQX509None, X509Ident, X509Plain, TLSIdent, TLSPlain, X509Vnc, TLSVnc, X509None, TLSNone, Ident, RA2_256, RA2, RA2ne_256, RA2ne, VncAuth, None)",
+                        "PQKEMPlain,PQKEMVnc,PQKEMNone,PQTLSPlain,PQTLSVnc,PQTLSNone,PQX509Plain,PQX509Vnc,PQX509None,X509Ident,X509Plain,TLSIdent,TLSPlain,X509Vnc,TLSVnc,X509None,TLSNone,Ident,RA2_256,RA2,RA2ne_256,RA2ne,VncAuth,None", Configuration.ConfigurationObject.ConfViewer);
 
 }
