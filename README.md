@@ -32,7 +32,7 @@ Adversaries can record encrypted VNC sessions today and decrypt them once large-
 ┌───────────────┐                              ┌───────────────┐
 │  VNC Client   │                              │  VNC Server   │
 │               │                              │               │
-│  ┌─────────┐  │   ML-KEM-768 + X25519       │  ┌─────────┐  │
+│  ┌─────────┐  │   ML-KEM-768 + X25519        │  ┌─────────┐  │
 │  │  liboqs │──│──────hybrid key exchange─────│──│  liboqs │  │
 │  └─────────┘  │                              │  └─────────┘  │
 │               │   AES-256-EAX encrypted      │               │
@@ -40,9 +40,9 @@ Adversaries can record encrypted VNC sessions today and decrypt them once large-
 │  │ Nettle  │──│── RFB protocol messages  ────│──│ Nettle  │  │
 │  └─────────┘  │   ═══════════════════════    │  └─────────┘  │
 │               │                              │               │
-│  ┌─────────┐  │   TLS 1.3 + PQ groups       │  ┌─────────┐  │
-│  │ GnuTLS  │──│──(PQTLS/PQX509 types)───────│──│ GnuTLS  │  │
-│  └─────────┘  │                              │  └─────────┘  │
+│  ┌─────────┐  │   TLS 1.3 + PQ groups        │  ┌──────────┐ │
+│  │ GnuTLS  │──│──(PQTLS/PQX509 types)────────│──│ GnuTLS   │ │
+│  └─────────┘  │                              │  └──────────┘ │
 └───────────────┘                              └───────────────┘
 ```
 
