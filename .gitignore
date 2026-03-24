@@ -1,0 +1,29 @@
+*.[ao]
+*.mo
+*.la
+*.lo
+.deps
+.libs
+
+CMakeFiles
+CMakeCache.txt
+Makefile
+Makefile.in
+config.h
+cmake_install.cmake
+cmake_uninstall.cmake
+install_manifest.txt
+
+# Build directories
+build/
+out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/

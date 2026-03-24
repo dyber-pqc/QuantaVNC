@@ -1,0 +1,34 @@
+QuantaVNC - Post-Quantum Cryptography VNC Platform
+Copyright (C) 2026 Dyber, Inc.
+
+QuantaVNC is a derivative work based on TigerVNC, which is licensed under the
+GNU General Public License version 2 (or later). See LICENCE.TXT for the full
+license text.
+
+This software contains code from TigerVNC and its upstream projects. The
+following is a non-exhaustive list of copyright holders whose work is included
+in this software:
+
+    Copyright (C) 1999 AT&T Laboratories Cambridge
+    Copyright (C) 2002-2005 RealVNC Ltd.
+    Copyright (C) 2000-2006 TightVNC Group
+    Copyright (C) 2005-2006 Martin Koegler
+    Copyright (C) 2005-2006 Sun Microsystems, Inc.
+    Copyright (C) 2006 OCCAM Financial Technology
+    Copyright (C) 2000-2008 Constantin Kaplinsky
+    Copyright (C) 2004-2017 Peter Astrand for Cendio AB
+    Copyright (C) 2010 Antoine Martin
+    Copyright (C) 2010 m-privacy GmbH
+    Copyright (C) 2009-2011 D. R. Commander
+    Copyright (C) 2009-2011 Pierre Ossman for Cendio AB
+    Copyright (C) 2004, 2009-2011 Red Hat, Inc.
+    Copyright (C) 2009-2026 TigerVNC Team
+
+See individual source files for complete copyright and license information.
+
+QuantaVNC adds post-quantum cryptographic extensions using:
+  - liboqs (Open Quantum Safe) - MIT License
+  - BouncyCastle (Java PQC provider) - MIT License
+
+All modifications by Dyber, Inc. are released under the same GNU General
+Public License version 2 (or later) as the original TigerVNC code.
