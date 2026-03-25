@@ -39,7 +39,7 @@ using namespace core;
 using namespace rfb;
 using namespace win32;
 
-const char* winvnc::VNCServerService::Name = "TigerVNC";
+const char* winvnc::VNCServerService::Name = "QuantaVNC";
 
 // SendSAS is not available until Windows 7, and missing from MinGW
 static HMODULE sasLibrary = nullptr;
@@ -49,8 +49,8 @@ static SendSAS_proto _SendSAS = nullptr;
 VNCServerService::VNCServerService()
   : Service(Name)
   , stopServiceEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr))
-  , sessionEvent(CreateEvent(nullptr, FALSE, FALSE, "Global\\SessionEventTigerVNC"))
-  , sessionEventCad(CreateEvent(nullptr, FALSE, FALSE, "Global\\SessionEventTigerVNCCad")) {
+  , sessionEvent(CreateEvent(nullptr, FALSE, FALSE, "Global\\SessionEventQuantaVNC"))
+  , sessionEventCad(CreateEvent(nullptr, FALSE, FALSE, "Global\\SessionEventQuantaVNCCad")) {
   if (sasLibrary == nullptr) {
     sasLibrary = LoadLibrary("sas.dll");
     if (sasLibrary != nullptr)

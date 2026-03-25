@@ -10,7 +10,7 @@
   <id>org.tigervnc.vncviewer</id>
   <metadata_license>FSFAP</metadata_license>
   <project_license>GPL-2.0-or-later</project_license>
-  <name>TigerVNC</name>
+  <name>QuantaVNC</name>
   <summary>Connect to VNC server and display remote desktop</summary>
   <content_rating type="oars-1.1"/>
   <description>
@@ -21,9 +21,9 @@
       VNC is platform-independent and supports various operating systems and architectures as both servers and clients.
     </p>
     <p>
-      TigerVNC is a high-speed version of VNC based on the RealVNC 4 and X.org code bases.
-      TigerVNC started as a next-generation development effort for TightVNC on Unix and Linux platforms, but it split from its parent project in early 2009 so that TightVNC could focus on Windows platforms.
-      TigerVNC supports a variant of Tight encoding that is greatly accelerated by the use of the libjpeg-turbo JPEG codec.
+      QuantaVNC is a post-quantum cryptography enhanced VNC platform built on the TigerVNC codebase.
+      It adds hybrid ML-KEM/X25519 key exchange and AES-256-GCM encryption to protect remote desktop sessions against both classical and quantum threats.
+      Based on TigerVNC, a high-speed VNC implementation using the RealVNC 4 and X.org code bases with libjpeg-turbo accelerated Tight encoding.
     </p>
   </description>
 
@@ -43,9 +43,9 @@
     </screenshot>
   </screenshots>
   <!-- developer_name tag deprecated with Appstream 1.0 -->
-  <developer_name>The TigerVNC team</developer_name>
+  <developer_name>The QuantaVNC team</developer_name>
   <developer id="org.tigervnc">
-    <name>The TigerVNC team</name>
+    <name>The QuantaVNC team</name>
   </developer>
-  <url type="homepage">https://tigervnc.org</url>
+  <url type="homepage">https://github.com/dyber-pqc/QuantaVNC</url>
 </component>

@@ -46,7 +46,7 @@ static LogWriter vlog("main");
 #include <vncconfig/Desktop.h>
 
 
-const char* rfb::win32::AppName = "TigerVNC Configuration";
+const char* rfb::win32::AppName = "QuantaVNC Configuration";
 
 
 #ifdef _DEBUG
@@ -106,7 +106,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE /*prev*/, char* /*cmdLine*/, int /*
 
       // Create the required configuration registry key
       RegKey rootKey;
-      rootKey.createKey(configKey, "Software\\TigerVNC\\WinVNC4");
+      rootKey.createKey(configKey, "Software\\QuantaVNC\\WinVNC4");
   
       // Override whatever security it already had (NT only)
       bool warnOnChangePassword = false;
@@ -139,7 +139,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE /*prev*/, char* /*cmdLine*/, int /*
 
       // Start a RegConfig thread, to load in existing settings
       RegConfigThread config;
-      config.start(configKey, "Software\\TigerVNC\\WinVNC4");
+      config.start(configKey, "Software\\QuantaVNC\\WinVNC4");
 
       // Build the dialog
       std::list<PropSheetPage*> pages;

@@ -291,7 +291,7 @@ public class Parameters {
     8);
 
   private static final String IDENTIFIER_STRING
-  = "TigerVNC Configuration file Version 1.0";
+  = "QuantaVNC Configuration file Version 1.0";
 
   static VoidParameter[] parameterArray = {
     CSecurityTLS.X509CA,

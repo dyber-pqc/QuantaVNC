@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=TigerVNC
+Name=QuantaVNC
 GenericName=Remote desktop viewer
 Comment=Connect to VNC server and display remote desktop
 Exec=@CMAKE_INSTALL_FULL_BINDIR@/vncviewer
-Icon=tigervnc
+Icon=quantavnc
 Terminal=false
 Type=Application
 StartupWMClass=vncviewer

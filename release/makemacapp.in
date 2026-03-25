@@ -23,7 +23,7 @@ usage()
 
 UNIVERSAL=0
 
-PACKAGE_NAME=TigerVNC
+PACKAGE_NAME=QuantaVNC
 VERSION=@VERSION@
 BUILD=@BUILD@
 SRCDIR=@CMAKE_SOURCE_DIR@
@@ -35,7 +35,7 @@ fi
 
 umask 022
 TMPDIR=`mktemp -d /tmp/$PACKAGE_NAME-build.XXXXXX`
-APPROOT="$TMPDIR/dmg/TigerVNC.app"
+APPROOT="$TMPDIR/dmg/QuantaVNC.app"
 mkdir -p "$APPROOT/Contents/MacOS"
 mkdir -p "$APPROOT/Contents/Resources"
 

@@ -45,7 +45,7 @@ using namespace win32;
 
 static LogWriter vlog("main");
 
-const char* rfb::win32::AppName = "TigerVNC Server";
+const char* rfb::win32::AppName = "QuantaVNC Server";
 
 
 extern bool runAsService;
@@ -185,12 +185,12 @@ static void processParams(int argc, char** argv) {
           // service to remove
         }
         try {
-          rfb::win32::unregisterService("TigerVNC Server");
+          rfb::win32::unregisterService("QuantaVNC Server");
         } catch (core::win32_error&) {
         }
 
         if (rfb::win32::registerService(VNCServerService::Name,
-                                        "TigerVNC Server",
+                                        "QuantaVNC Server",
                                         "Provides remote access to this machine via the VNC/RFB protocol.",
                                         argc-(j+1), &argv[j+1]))
           MsgBoxOrLog("Registered service successfully");

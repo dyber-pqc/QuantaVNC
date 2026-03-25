@@ -46,7 +46,7 @@ using namespace network;
 static LogWriter vlog("VNCServerWin32");
 
 
-const char* winvnc::VNCServerWin32::RegConfigPath = "Software\\TigerVNC\\WinVNC4";
+const char* winvnc::VNCServerWin32::RegConfigPath = "Software\\QuantaVNC\\WinVNC4";
 
 
 static IntParameter port_number("PortNumber",
@@ -66,7 +66,7 @@ VNCServerWin32::VNCServerWin32()
   : command(NoCommand),
     commandEvent(CreateEvent(nullptr, TRUE, FALSE, nullptr)),
     sessionEvent(isServiceProcess() ?
-      CreateEvent(nullptr, FALSE, FALSE, "Global\\SessionEventTigerVNC") : nullptr),
+      CreateEvent(nullptr, FALSE, FALSE, "Global\\SessionEventQuantaVNC") : nullptr),
     vncServer(ComputerName().buf, &desktop),
     thread_id(-1), runServer(false), isDesktopStarted(false),
     config(&sockMgr), rfbSock(&sockMgr), trayIcon(nullptr),

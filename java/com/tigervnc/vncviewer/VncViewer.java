@@ -61,7 +61,7 @@ import static com.tigervnc.vncviewer.Parameters.*;
 public class VncViewer implements Runnable {
 
   public static final String aboutText =
-    new String("TigerVNC Java viewer v%s (%s)%n"+
+    new String("QuantaVNC Java viewer v%s (%s)%n"+
                "Built on %s at %s%n"+
                "Copyright (C) 1999-2026 TigerVNC team and many others (see README.rst)%n"+
                "See https://www.tigervnc.org for information on TigerVNC.");
@@ -361,7 +361,7 @@ public class VncViewer implements Runnable {
     JOptionPane op =
       new JOptionPane(msg, JOptionPane.INFORMATION_MESSAGE,
                       JOptionPane.DEFAULT_OPTION, VncViewer.logoIcon, options);
-    JDialog dlg = op.createDialog(parent, "About TigerVNC");
+    JDialog dlg = op.createDialog(parent, "About QuantaVNC");
     dlg.setIconImage(VncViewer.frameIcon);
     dlg.setAlwaysOnTop(true);
     dlg.setVisible(true);
@@ -380,7 +380,7 @@ public class VncViewer implements Runnable {
   void reportException(java.lang.Exception e) {
     String title, msg = e.getMessage();
     int msgType = JOptionPane.ERROR_MESSAGE;
-    title = "TigerVNC : Error";
+    title = "QuantaVNC : Error";
     e.printStackTrace();
     JOptionPane.showMessageDialog(null, msg, title, msgType);
   }

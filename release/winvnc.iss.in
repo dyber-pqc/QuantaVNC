@@ -2,13 +2,13 @@
 #ifdef WIN64
 ArchitecturesInstallIn64BitMode=x64
 #endif
-AppName=TigerVNC server
-AppVerName=TigerVNC server v@VERSION@ (@BUILD@)
+AppName=QuantaVNC server
+AppVerName=QuantaVNC server v@VERSION@ (@BUILD@)
 AppVersion=@VERSION@
-AppPublisher=TigerVNC team
-AppPublisherURL=https://tigervnc.org
-DefaultDirName={pf}\TigerVNC server
-DefaultGroupName=TigerVNC server
+AppPublisher=QuantaVNC team
+AppPublisherURL=https://github.com/dyber-pqc/QuantaVNC
+DefaultDirName={pf}\QuantaVNC server
+DefaultGroupName=QuantaVNC server
 LicenseFile=@CMAKE_SOURCE_DIR@\LICENCE.TXT
 
 [Dirs]
@@ -35,11 +35,11 @@ Name: "{group}\VNC server (Service-Mode)\Start VNC service"; FileName: "{app}\wi
 Name: "{group}\VNC server (Service-Mode)\Stop VNC service"; FileName: "{app}\winvnc4.exe"; Parameters: "-noconsole -stop";
 Name: "{group}\License"; FileName: "write.exe"; Parameters: "LICENCE.TXT"; WorkingDir: "{app}"; Flags: "useapppaths"
 Name: "{group}\Read me"; FileName: "write.exe"; Parameters: "README.rst"; WorkingDir: "{app}"; Flags: "useapppaths"
-Name: "{group}\Uninstall TigerVNC server"; FileName: "{uninstallexe}"; WorkingDir: "{app}";
+Name: "{group}\Uninstall QuantaVNC server"; FileName: "{uninstallexe}"; WorkingDir: "{app}";
 
 [Tasks]
-Name: installservice; Description: "&Register new TigerVNC server as a system service"; GroupDescription: "Server configuration:"; 
-Name: startservice; Description: "&Start or restart TigerVNC service"; GroupDescription: "Server configuration:";
+Name: installservice; Description: "&Register new QuantaVNC server as a system service"; GroupDescription: "Server configuration:";
+Name: startservice; Description: "&Start or restart QuantaVNC service"; GroupDescription: "Server configuration:";
 
 [Run]
 Filename: "{app}\winvnc4.exe"; Parameters: "-register"; Tasks: installservice
@@ -106,7 +106,7 @@ var
 function InitializeSetup: Boolean;
 begin
   GetWindowsVersionEx(OSVersion);
-  SuppressibleMsgBox('TigerVNC Windows server is currently unmaintained and may not function correctly.', mbError, MB_OK, IDOK);
+  SuppressibleMsgBox('QuantaVNC Windows server is currently unmaintained and may not function correctly.', mbError, MB_OK, IDOK);
   Result := True;
 end;
 

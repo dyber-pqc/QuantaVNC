@@ -2,13 +2,13 @@
 #ifdef WIN64
 ArchitecturesInstallIn64BitMode=x64
 #endif
-AppName=TigerVNC
-AppVerName=TigerVNC @VERSION@ (@BUILD@)
+AppName=QuantaVNC
+AppVerName=QuantaVNC @VERSION@ (@BUILD@)
 AppVersion=@VERSION@
-AppPublisher=TigerVNC team
-AppPublisherURL=https://tigervnc.org
-DefaultDirName={pf}\TigerVNC
-DefaultGroupName=TigerVNC
+AppPublisher=QuantaVNC team
+AppPublisherURL=https://github.com/dyber-pqc/QuantaVNC
+DefaultDirName={pf}\QuantaVNC
+DefaultGroupName=QuantaVNC
 LicenseFile=@CMAKE_SOURCE_DIR@\LICENCE.TXT
 
 [Files]
@@ -25,9 +25,9 @@ Source: "@CMAKE_SOURCE_DIR@\LICENCE.TXT"; DestDir: "{app}"; Flags: ignoreversion
 #for {LINGUAS = FileOpen("@CMAKE_SOURCE_DIR@\po\LINGUAS"); !FileEof(LINGUAS); ""} AddLanguage
 
 [Icons]
-Name: "{group}\TigerVNC"; FileName: "{app}\vncviewer.exe";
-Name: "{group}\Listening TigerVNC"; FileName: "{app}\vncviewer.exe"; Parameters: "-listen";
+Name: "{group}\QuantaVNC"; FileName: "{app}\vncviewer.exe";
+Name: "{group}\Listening QuantaVNC"; FileName: "{app}\vncviewer.exe"; Parameters: "-listen";
 
 Name: "{group}\License"; FileName: "write.exe"; Parameters: "LICENCE.TXT"; WorkingDir: "{app}"; Flags: "useapppaths"
 Name: "{group}\Read Me"; FileName: "write.exe"; Parameters: "README.rst"; WorkingDir: "{app}"; Flags: "useapppaths"
-Name: "{group}\Uninstall TigerVNC"; FileName: "{uninstallexe}"; WorkingDir: "{app}";
+Name: "{group}\Uninstall QuantaVNC"; FileName: "{uninstallexe}"; WorkingDir: "{app}";

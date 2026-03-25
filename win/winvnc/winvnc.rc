@@ -76,13 +76,13 @@ BEGIN
         BLOCK "080904b0"
         BEGIN
             VALUE "Comments", "\0"
-            VALUE "CompanyName", "TigerVNC team\0"
-            VALUE "FileDescription", "TigerVNC server\0"
-            VALUE "ProductName", "TigerVNC server\0"
+            VALUE "CompanyName", "QuantaVNC team\0"
+            VALUE "FileDescription", "QuantaVNC server\0"
+            VALUE "ProductName", "QuantaVNC server\0"
             VALUE "FileVersion", __RCVERSIONSTR
             VALUE "InternalName", "winvnc\0"
             VALUE "LegalCopyright", "Copyright (C) 1999-2026 TigerVNC team and many others (see README.rst)\0"
-            VALUE "LegalTrademarks", "TigerVNC\0"
+            VALUE "LegalTrademarks", "QuantaVNC\0"
             VALUE "OriginalFilename", "winvnc4.exe\0"
             VALUE "PrivateBuild", "\0"
             VALUE "ProductVersion", __VERSIONSTR
@@ -140,7 +140,7 @@ END
 IDD_ABOUT DIALOG DISCARDABLE  0, 0, 300, 92
 STYLE DS_MODALFRAME | DS_SETFOREGROUND | DS_CENTER | WS_POPUP | WS_CAPTION | 
     WS_SYSMENU
-CAPTION "About TigerVNC server for Windows"
+CAPTION "About QuantaVNC server for Windows"
 FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,245,70,47,15
@@ -149,7 +149,7 @@ BEGIN
     LTEXT           ">version<",IDC_VERSION,170,10,72,15
     LTEXT           ">buildtime<",IDC_BUILDTIME,45,25,202,15
     LTEXT           ">copyright<",IDC_COPYRIGHT,45,40,256,15
-    LTEXT           "See https://www.tigervnc.org for more information on VNC.",
+    LTEXT           "See https://github.com/dyber-pqc/QuantaVNC for more information.",
                     IDC_STATIC,45,55,202,15
 END
 

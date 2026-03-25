@@ -56,7 +56,7 @@ public class FileUtils {
     String os = System.getProperty("os.name");
 
     if (os.startsWith("Windows")) {
-      File newDir = new File(System.getenv("APPDATA") + getFileSeparator() + "TigerVNC" + getFileSeparator());
+      File newDir = new File(System.getenv("APPDATA") + getFileSeparator() + "QuantaVNC" + getFileSeparator());
       if (!newDir.exists()) {
         newDir.mkdirs();
       }
@@ -75,8 +75,8 @@ public class FileUtils {
       }
       String xdgBaseDir = System.getenv(xdgEnv);
       return (xdgBaseDir != null && xdgBaseDir.startsWith("/"))
-        ? xdgBaseDir + getFileSeparator() + "tigervnc" + getFileSeparator()
-        : getHomeDir() + xdgDefault + getFileSeparator() + "tigervnc" + getFileSeparator();
+        ? xdgBaseDir + getFileSeparator() + "quantavnc" + getFileSeparator()
+        : getHomeDir() + xdgDefault + getFileSeparator() + "quantavnc" + getFileSeparator();
     }
   }
 

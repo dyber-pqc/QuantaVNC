@@ -178,7 +178,7 @@ class OptionsDialog extends Dialog {
   @SuppressWarnings({"rawtypes","unchecked"})
   public OptionsDialog() {
     super(true);
-    setTitle("TigerVNC options");
+    setTitle("QuantaVNC options");
     setResizable(false);
 
     getContentPane().setLayout(
