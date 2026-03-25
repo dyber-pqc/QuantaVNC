@@ -71,10 +71,10 @@ public class VncViewer implements Runnable {
   public static String buildDate = null;
   public static String buildTime = null;
   static ImageIcon frameIconSrc =
-    new ImageIcon(VncViewer.class.getResource("tigervnc.ico"));
+    new ImageIcon(VncViewer.class.getResource("quantavnc.ico"));
   public static final Image frameIcon = frameIconSrc.getImage();
   public static final ImageIcon logoIcon =
-    new ImageIcon(VncViewer.class.getResource("tigervnc.png"));
+    new ImageIcon(VncViewer.class.getResource("quantavnc.png"));
   public static final Image logoImage = logoIcon.getImage();
   public static final InputStream timestamp =
     VncViewer.class.getResourceAsStream("timestamp");

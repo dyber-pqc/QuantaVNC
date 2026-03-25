@@ -13,7 +13,7 @@
 	<key>CFBundleGetInfoString</key>
 	<string>@VERSION@, Copyright (C) 1999-2026 TigerVNC team and many others (see README.rst)</string>
 	<key>CFBundleIconFile</key>
-	<string>tigervnc.icns</string>
+	<string>quantavnc.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.tigervnc.tigervnc</string>
 	<key>CFBundleInfoDictionaryVersion</key>

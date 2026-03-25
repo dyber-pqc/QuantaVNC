@@ -125,8 +125,8 @@ configure_file(${CLASSPATH}/timestamp.in ${CLASSPATH}/timestamp)
 if(NOT "${SRCDIR}" STREQUAL "${BINDIR}")
 
 set(ICONS
-tigervnc.ico
-tigervnc.png
+quantavnc.ico
+quantavnc.png
 insecure.png
 secure.png)
 
@@ -146,8 +146,8 @@ add_custom_command(OUTPUT VncViewer.jar
   DEPENDS ${JAVA_CLASSES}
     ${SRCDIR}/${CLASSPATH}/MANIFEST.MF
     ${BINDIR}/${CLASSPATH}/timestamp
-    ${BINDIR}/${CLASSPATH}/tigervnc.ico
-    ${BINDIR}/${CLASSPATH}/tigervnc.png
+    ${BINDIR}/${CLASSPATH}/quantavnc.ico
+    ${BINDIR}/${CLASSPATH}/quantavnc.png
     ${BINDIR}/${CLASSPATH}/insecure.png
     ${BINDIR}/${CLASSPATH}/secure.png
   COMMAND ${JAVA_ARCHIVE}
@@ -163,7 +163,7 @@ add_custom_command(OUTPUT VncViewer.jar
     com/jcraft/jsch/jce/*.class
     com/jcraft/jsch/*.class
     com/tigervnc/vncviewer/*.png
-    com/tigervnc/vncviewer/tigervnc.ico
+    com/tigervnc/vncviewer/quantavnc.ico
   COMMAND ${CMAKE_COMMAND}
   ARGS -DJava_PATH=${Java_PATH} -DJAR_FILE=${BINDIR}/VncViewer.jar
     -DJAVA_KEYSTORE=${JAVA_KEYSTORE}

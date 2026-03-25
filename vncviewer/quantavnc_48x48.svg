@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="shieldGrad48" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0D1F3C"/>
+      <stop offset="100%" style="stop-color:#0A1628"/>
+    </linearGradient>
+    <linearGradient id="rimGrad48" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00D4FF"/>
+      <stop offset="40%" style="stop-color:#7B2FBE"/>
+      <stop offset="100%" style="stop-color:#00D4FF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Shield outer rim -->
+  <path d="M24 3 L43 11 L43 27 C43 37 34 44 24 47 C14 44 5 37 5 27 L5 11 Z"
+        fill="url(#rimGrad48)" opacity="0.9"/>
+
+  <!-- Shield body -->
+  <path d="M24 5 L41 12 L41 27 C41 36 33 42 24 45 C15 42 7 36 7 27 L7 12 Z"
+        fill="url(#shieldGrad48)"/>
+
+  <!-- Simplified lattice (just a few lines) -->
+  <g opacity="0.2">
+    <line x1="14" y1="12" x2="14" y2="40" stroke="#00D4FF" stroke-width="0.4"/>
+    <line x1="24" y1="5" x2="24" y2="45" stroke="#00D4FF" stroke-width="0.4"/>
+    <line x1="34" y1="12" x2="34" y2="40" stroke="#00D4FF" stroke-width="0.4"/>
+    <line x1="7" y1="20" x2="41" y2="20" stroke="#00D4FF" stroke-width="0.4"/>
+    <line x1="7" y1="30" x2="41" y2="30" stroke="#00D4FF" stroke-width="0.4"/>
+  </g>
+
+  <!-- Stylized Q - bold and clean for small sizes -->
+  <circle cx="24" cy="25" r="8" fill="none" stroke="#00D4FF" stroke-width="2.5"/>
+  <!-- Q tail -->
+  <line x1="28" y1="30" x2="34" y2="37" stroke="#00D4FF" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Two orbital arcs (simplified) -->
+  <path d="M14 21 Q24 16 34 21" fill="none" stroke="#7B2FBE" stroke-width="0.8" opacity="0.6"/>
+  <path d="M14 29 Q24 34 34 29" fill="none" stroke="#7B2FBE" stroke-width="0.8" opacity="0.6"/>
+
+  <!-- Electron dots -->
+  <circle cx="16" cy="21" r="1.5" fill="#00D4FF" opacity="0.9"/>
+  <circle cx="32" cy="29" r="1.5" fill="#00D4FF" opacity="0.9"/>
+
+  <!-- Keyhole at top -->
+  <circle cx="24" cy="11" r="2" fill="none" stroke="#FFFFFF" stroke-width="0.8" opacity="0.6"/>
+  <rect x="23.2" y="12.5" width="1.6" height="3" rx="0.5" fill="#FFFFFF" opacity="0.5"/>
+</svg>

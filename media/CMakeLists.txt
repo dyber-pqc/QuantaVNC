@@ -6,12 +6,12 @@ find_program(CONVERT_EXECUTABLE convert)
 find_program(PNG2ICNS_EXECUTABLE png2icns)
 
 if(CONVERT_EXECUTABLE)
-  set(ICON_FILES icons/tigervnc.ico)
+  set(ICON_FILES icons/quantavnc.ico)
   foreach(SIZE ${LINUX_ICON_SIZES})
-    list(APPEND ICON_FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc_${SIZE}.png)
+    list(APPEND ICON_FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc_${SIZE}.png)
   endforeach()
   if(PNG2ICNS_EXECUTABLE)
-    list(APPEND ICON_FILES icons/tigervnc.icns)
+    list(APPEND ICON_FILES icons/quantavnc.icns)
   endif()
   add_custom_target(icons DEPENDS ${ICON_FILES})
 
@@ -21,37 +21,37 @@ if(CONVERT_EXECUTABLE)
     else()
       set(ICON_SRC_FILE ${CMAKE_CURRENT_SOURCE_DIR}/tigervnc_48.svg)
     endif()
-    add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc_${SIZE}.png
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc_${SIZE}.png
       COMMAND ${CONVERT_EXECUTABLE} -depth 8 -background transparent
         -size ${SIZE}x${SIZE} ${ICON_SRC_FILE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc_${SIZE}.png
+        ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc_${SIZE}.png
       DEPENDS ${ICON_SRC_FILE}
-      COMMENT "Generating icons/tigervnc_${SIZE}.png")
+      COMMENT "Generating icons/quantavnc_${SIZE}.png")
   endforeach()
 
   foreach(SIZE ${WINDOWS_ICON_SIZES})
     if(${SIZE} LESS_EQUAL 32)
-      list(APPEND ICO_LEGACY \\\( ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc_${SIZE}.png -depth 4 -colors 16 \\\))
-      list(APPEND ICO_LEGACY \\\( ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc_${SIZE}.png -depth 8 -colors 256 \\\))
+      list(APPEND ICO_LEGACY \\\( ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc_${SIZE}.png -depth 4 -colors 16 \\\))
+      list(APPEND ICO_LEGACY \\\( ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc_${SIZE}.png -depth 8 -colors 256 \\\))
     endif()
-    list(APPEND ICO_NORMAL \\\( ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc_${SIZE}.png \\\))
-    list(APPEND ICO_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc_${SIZE}.png)
+    list(APPEND ICO_NORMAL \\\( ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc_${SIZE}.png \\\))
+    list(APPEND ICO_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc_${SIZE}.png)
   endforeach()
-  add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc.ico
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc.ico
     COMMAND ${CONVERT_EXECUTABLE} ${ICO_LEGACY} ${ICO_NORMAL}
-      ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc.ico
+      ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc.ico
     DEPENDS ${ICO_DEPENDS}
-    COMMENT "Generating icons/tigervnc.ico")
+    COMMENT "Generating icons/quantavnc.ico")
 
   if(PNG2ICNS_EXECUTABLE)
     # FIXME: Should be a drop shadow here as well
     foreach(SIZE ${MACOS_ICON_SIZES})
-      list(APPEND ICNS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc_${SIZE}.png)
+      list(APPEND ICNS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc_${SIZE}.png)
     endforeach()
-    add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc.icns
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc.icns
       COMMAND ${PNG2ICNS_EXECUTABLE}
-          ${CMAKE_CURRENT_SOURCE_DIR}/icons/tigervnc.icns ${ICNS_FILES}
+          ${CMAKE_CURRENT_SOURCE_DIR}/icons/quantavnc.icns ${ICNS_FILES}
       DEPENDS ${ICNS_FILES}
-      COMMENT "Generating icons/tigervnc.icns")
+      COMMENT "Generating icons/quantavnc.icns")
   endif()
 endif()
