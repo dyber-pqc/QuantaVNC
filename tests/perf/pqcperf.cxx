@@ -241,37 +241,37 @@ static void benchAES256EAX()
   uint8_t plaintext[BLOCK_SIZE];
   uint8_t ciphertext[BLOCK_SIZE];
   uint8_t tag[EAX_DIGEST_SIZE];
-  struct eax_aes256_ctx ctx;
+
+  // Use Nettle's EAX_CTX macro — same pattern as AESOutStream/AESInStream
+  struct EAX_CTX(aes256_ctx) ctx;
 
   memset(key, 0xAA, sizeof(key));
   memset(nonce, 0xBB, sizeof(nonce));
   memset(plaintext, 0xCC, sizeof(plaintext));
 
-  eax_aes256_set_key(&ctx, key);
+  EAX_SET_KEY(&ctx, aes256_set_encrypt_key, aes256_encrypt, key);
 
   // Encrypt throughput
   BenchResult encR = benchOp("AES-256-EAX", "encrypt", [&]() {
-    eax_aes256_set_nonce(&ctx, sizeof(nonce), nonce);
-    eax_aes256_encrypt(&ctx, sizeof(plaintext), ciphertext, plaintext);
-    eax_aes256_digest(&ctx, sizeof(tag), tag);
+    EAX_SET_NONCE(&ctx, aes256_encrypt, sizeof(nonce), nonce);
+    EAX_ENCRYPT(&ctx, aes256_encrypt, sizeof(plaintext), ciphertext, plaintext);
+    EAX_DIGEST(&ctx, aes256_encrypt, sizeof(tag), tag);
   });
-  // Override ops/sec with MB/s
   double encMBs = (encR.opsPerSec * BLOCK_SIZE) / (1024.0 * 1024.0);
 
-  // Decrypt throughput
-  eax_aes256_set_nonce(&ctx, sizeof(nonce), nonce);
-  eax_aes256_encrypt(&ctx, sizeof(plaintext), ciphertext, plaintext);
-  eax_aes256_digest(&ctx, sizeof(tag), tag);
+  // Decrypt throughput - prepare ciphertext first
+  EAX_SET_NONCE(&ctx, aes256_encrypt, sizeof(nonce), nonce);
+  EAX_ENCRYPT(&ctx, aes256_encrypt, sizeof(plaintext), ciphertext, plaintext);
+  EAX_DIGEST(&ctx, aes256_encrypt, sizeof(tag), tag);
 
   BenchResult decR = benchOp("AES-256-EAX", "decrypt", [&]() {
-    eax_aes256_set_nonce(&ctx, sizeof(nonce), nonce);
-    eax_aes256_decrypt(&ctx, sizeof(ciphertext), plaintext, ciphertext);
-    eax_aes256_digest(&ctx, sizeof(tag), tag);
+    EAX_SET_NONCE(&ctx, aes256_encrypt, sizeof(nonce), nonce);
+    EAX_DECRYPT(&ctx, aes256_encrypt, sizeof(ciphertext), plaintext, ciphertext);
+    EAX_DIGEST(&ctx, aes256_encrypt, sizeof(tag), tag);
   });
   double decMBs = (decR.opsPerSec * BLOCK_SIZE) / (1024.0 * 1024.0);
 
   // Patch the last two results to show MB/s in a special field
-  // We store MB/s in the opsPerSec field for AES entries (flagged by name)
   results[results.size() - 2].opsPerSec = encMBs;
   results[results.size() - 2].ct_bytes = BLOCK_SIZE;
   results[results.size() - 1].opsPerSec = decMBs;
