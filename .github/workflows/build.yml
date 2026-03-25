@@ -132,6 +132,21 @@ jobs:
       - name: Build
         working-directory: build
         run: mingw32-make -j$(nproc)
+      - name: Collect runtime DLLs
+        run: |
+          # Use ldd to find all MinGW DLLs needed by the viewer and server
+          mkdir -p build/dlls
+          for exe in build/vncviewer/vncviewer.exe build/win/winvnc/winvnc4.exe; do
+            if [ -f "$exe" ]; then
+              ldd "$exe" | grep -i '/mingw64/' | awk '{print $3}' | while read dll; do
+                cp -n "$dll" build/dlls/ 2>/dev/null || true
+              done
+            fi
+          done
+          # Also grab liboqs which may not be in ldd output if loaded at runtime
+          cp -n /mingw64/bin/liboqs*.dll build/dlls/ 2>/dev/null || true
+          echo "Collected DLLs:"
+          ls -la build/dlls/
       - name: Install
         working-directory: build
         env:
