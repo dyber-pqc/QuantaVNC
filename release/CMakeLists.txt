@@ -13,6 +13,9 @@ if(CMAKE_SIZEOF_VOID_P MATCHES 8)
   set(INST_DEFS -DWIN64)
 endif()
 
+# Find MinGW bin directory for runtime DLLs
+get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+
 configure_file(tigervnc.iss.in tigervnc.iss)
 
 add_custom_command(OUTPUT ${CMAKE_PROJECT_NAME}${INST_SUFFIX}-${VERSION}.exe
@@ -41,10 +44,10 @@ if(APPLE)
 configure_file(makemacapp.in makemacapp)
 configure_file(Info.plist.in Info.plist)
 
-add_custom_command(OUTPUT TigerVNC-${VERSION}.dmg
+add_custom_command(OUTPUT QuantaVNC-${VERSION}.dmg
   COMMAND sh makemacapp
   DEPENDS vncviewer makemacapp Info.plist)
-add_custom_target(dmg DEPENDS TigerVNC-${VERSION}.dmg)
+add_custom_target(dmg DEPENDS QuantaVNC-${VERSION}.dmg)
 
 endif() # APPLE
 
