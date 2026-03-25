@@ -83,7 +83,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 if(GNUTLS_FOUND)
-  target_sources(rfb PRIVATE CSecurityTLS.cxx SSecurityTLS.cxx)
+  target_sources(rfb PRIVATE CSecurityTLS.cxx SSecurityTLS.cxx PQCCertificate.cxx)
   target_include_directories(rfb SYSTEM PUBLIC ${GNUTLS_INCLUDE_DIR})
   target_link_libraries(rfb ${GNUTLS_LIBRARIES})
   # FIXME: Hack to block it marking gnutls_free() as dllimport

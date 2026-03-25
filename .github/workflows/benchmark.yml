@@ -1,0 +1,88 @@
+name: PQC Benchmarks
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Monday at 6am UTC
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERBOSE: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfltk1.3-dev fluid gettext appstream
+          sudo apt-get install -y libpixman-1-dev libjpeg-turbo8-dev
+          sudo apt-get install -y libgnutls28-dev nettle-dev libgmp-dev
+          sudo apt-get install -y libxtst-dev libxdamage-dev libxfixes-dev libxrandr-dev libpam-dev
+          sudo apt-get install -y libavcodec-dev libavutil-dev libswscale-dev
+          sudo apt-get install -y uuid-dev libglib2.0-dev libpipewire-0.3-dev
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y libgtest-dev cmake ninja-build
+
+      - name: Build and install liboqs
+        run: |
+          git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
+          cd /tmp/liboqs && mkdir build && cd build
+          cmake -GNinja \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_SHARED_LIBS=ON \
+            -DOQS_BUILD_ONLY_LIB=ON ..
+          ninja
+          sudo ninja install
+          sudo ldconfig
+
+      - name: Configure
+        run: |
+          cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_PQC=ON \
+            -DENABLE_GNUTLS=ON \
+            -DENABLE_NETTLE=ON \
+            -DBUILD_VIEWER=OFF \
+            -S . -B build
+
+      - name: Build pqcperf
+        working-directory: build
+        run: make -j$(nproc) pqcperf
+
+      - name: Run PQC benchmarks
+        working-directory: build
+        run: |
+          ./tests/perf/pqcperf | tee pqc-benchmark-results.txt
+
+      - name: Extract CSV results
+        working-directory: build
+        run: |
+          sed -n '/^--- CSV BEGIN ---$/,/^--- CSV END ---$/p' pqc-benchmark-results.txt | \
+            grep -v '^---' > pqc-benchmark-results.csv || true
+
+      - name: Post summary
+        working-directory: build
+        run: |
+          echo "## PQC Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          # Print everything except the CSV block
+          sed '/^--- CSV BEGIN ---$/,/^--- CSV END ---$/d' pqc-benchmark-results.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Run on $(date -u '+%Y-%m-%d %H:%M UTC') | $(uname -m) | $(nproc) cores_" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: pqc-benchmark-results
+          path: |
+            build/pqc-benchmark-results.txt
+            build/pqc-benchmark-results.csv

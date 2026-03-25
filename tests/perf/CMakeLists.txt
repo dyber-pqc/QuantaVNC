@@ -38,3 +38,8 @@ if (BUILD_VIEWER)
     target_link_libraries(fbperf "-framework IOKit")
   endif()
 endif()
+
+if(OQS_FOUND)
+  add_executable(pqcperf pqcperf.cxx)
+  target_link_libraries(pqcperf test_util rfb rdr core)
+endif()

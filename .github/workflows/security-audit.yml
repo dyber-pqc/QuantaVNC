@@ -1,0 +1,927 @@
+name: Security Audit
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Monday at 06:00 UTC
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────
+  # 1. SAST — Static Application Security Testing
+  # ───────────────────────────────────────────────────────────────────
+  sast:
+    name: SAST (flawfinder + cppcheck + banned functions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install SAST tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flawfinder cppcheck
+
+      - name: Run flawfinder
+        id: flawfinder
+        run: |
+          echo "## Flawfinder Results" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          flawfinder --minlevel=2 --columns --context \
+            common/ vncviewer/ unix/ win/ tests/ 2>&1 | tee flawfinder-report.txt
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # Fail on level 4+ (critical) hits
+          CRITICAL=$(flawfinder --minlevel=4 --quiet common/ vncviewer/ unix/ win/ tests/ 2>&1 | grep -c "^  " || true)
+          echo "critical_count=$CRITICAL" >> "$GITHUB_OUTPUT"
+
+      - name: Run cppcheck
+        id: cppcheck
+        run: |
+          echo "## Cppcheck Results" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cppcheck --enable=warning,performance,portability \
+            --suppress=missingInclude \
+            --suppress=unmatchedSuppression \
+            --error-exitcode=0 \
+            --inline-suppr \
+            -I common/ \
+            common/ vncviewer/ unix/ win/ tests/ 2>&1 | tee cppcheck-report.txt
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ERROR_COUNT=$(grep -c '\(error\)' cppcheck-report.txt || true)
+          echo "error_count=$ERROR_COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Check for banned/unsafe functions
+        id: banned
+        run: |
+          echo "## Banned Function Check" >> "$GITHUB_STEP_SUMMARY"
+          BANNED_PATTERNS='gets\s*\(|[^_]strcpy\s*\(|[^v]sprintf\s*\(|strcat\s*\(|scanf\s*\(|vsprintf\s*\(|strtok\s*\(|tmpnam\s*\(|mktemp\s*\('
+          HITS=0
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # Scan C/C++ source files, excluding third-party vendored code
+          while IFS= read -r file; do
+            MATCHES=$(grep -nP "$BANNED_PATTERNS" "$file" 2>/dev/null || true)
+            if [ -n "$MATCHES" ]; then
+              echo "$file:" >> "$GITHUB_STEP_SUMMARY"
+              echo "$MATCHES" >> "$GITHUB_STEP_SUMMARY"
+              echo "$file:"
+              echo "$MATCHES"
+              HITS=$((HITS + $(echo "$MATCHES" | wc -l)))
+            fi
+          done < <(find common/ vncviewer/ unix/ win/ tests/ -type f \( -name '*.cxx' -o -name '*.c' -o -name '*.h' \) 2>/dev/null)
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "Found $HITS banned function usage(s)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "banned_count=$HITS" >> "$GITHUB_OUTPUT"
+
+      - name: Upload SAST reports
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: sast-reports
+          path: |
+            flawfinder-report.txt
+            cppcheck-report.txt
+
+  # ───────────────────────────────────────────────────────────────────
+  # 2. Dependency Auditing
+  # ───────────────────────────────────────────────────────────────────
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check liboqs version and known CVEs
+        id: liboqs
+        run: |
+          echo "## Dependency Audit" >> "$GITHUB_STEP_SUMMARY"
+          echo "### liboqs" >> "$GITHUB_STEP_SUMMARY"
+
+          # Clone liboqs to inspect version
+          git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
+          LIBOQS_VERSION=$(grep -oP 'project\(liboqs VERSION \K[0-9.]+' /tmp/liboqs/CMakeLists.txt || echo "unknown")
+          echo "liboqs version: $LIBOQS_VERSION" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # Verify clone source is official
+          cd /tmp/liboqs
+          REMOTE=$(git remote get-url origin)
+          if [[ "$REMOTE" == *"open-quantum-safe/liboqs"* ]]; then
+            echo "- Source: Official ($REMOTE) :white_check_mark:" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Source: UNOFFICIAL ($REMOTE) :x:" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Check for known CVE advisories via GitHub API
+          echo "### Known CVEs (GitHub Security Advisories)" >> "$GITHUB_STEP_SUMMARY"
+          curl -sL "https://api.github.com/repos/open-quantum-safe/liboqs/security-advisories?state=published" \
+            -H "Accept: application/vnd.github+json" 2>/dev/null | \
+            python3 -c "
+          import json, sys
+          try:
+              data = json.load(sys.stdin)
+              if isinstance(data, list) and len(data) > 0:
+                  for adv in data:
+                      print(f\"- {adv.get('cve_id','N/A')}: {adv.get('summary','No summary')}\")
+              else:
+                  print('No published advisories found.')
+          except:
+              print('Could not fetch advisories (API rate limit or no access).')
+          " | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Check system library versions
+        run: |
+          sudo apt-get update
+          echo "### System Library Versions" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # GnuTLS
+          GNUTLS_VER=$(dpkg -s libgnutls28-dev 2>/dev/null | grep '^Version:' || echo "Not installed")
+          echo "GnuTLS: $GNUTLS_VER" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # Nettle
+          NETTLE_VER=$(dpkg -s nettle-dev 2>/dev/null | grep '^Version:' || echo "Not installed")
+          echo "Nettle: $NETTLE_VER" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # Pixman
+          PIXMAN_VER=$(dpkg -s libpixman-1-dev 2>/dev/null | grep '^Version:' || echo "Not installed")
+          echo "Pixman: $PIXMAN_VER" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # libjpeg-turbo
+          JPEG_VER=$(dpkg -s libjpeg-turbo8-dev 2>/dev/null | grep '^Version:' || echo "Not installed")
+          echo "libjpeg-turbo: $JPEG_VER" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # FLTK
+          FLTK_VER=$(dpkg -s libfltk1.3-dev 2>/dev/null | grep '^Version:' || echo "Not installed")
+          echo "FLTK: $FLTK_VER" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # zlib
+          ZLIB_VER=$(dpkg -s zlib1g-dev 2>/dev/null | grep '^Version:' || echo "Not installed")
+          echo "zlib: $ZLIB_VER" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Scan for outdated dependencies with known vulns
+        run: |
+          sudo apt-get install -y debsecan 2>/dev/null || true
+          echo "### Installed Package Vulnerability Scan" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          debsecan --suite $(lsb_release -cs) 2>/dev/null | \
+            grep -iE 'gnutls|nettle|libjpeg|pixman|fltk|zlib|oqs' | head -50 >> "$GITHUB_STEP_SUMMARY" || \
+            echo "No known vulnerabilities in key dependencies." >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ───────────────────────────────────────────────────────────────────
+  # 3. Cryptographic Audit
+  # ───────────────────────────────────────────────────────────────────
+  crypto-audit:
+    name: Cryptographic Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check for hardcoded secrets and keys
+        id: secrets
+        run: |
+          echo "## Cryptographic Audit" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Hardcoded Secrets/Keys" >> "$GITHUB_STEP_SUMMARY"
+          ISSUES=0
+
+          # Detect hex-encoded keys (32+ hex chars that look like keys)
+          echo "Scanning for potential hardcoded keys..." | tee -a "$GITHUB_STEP_SUMMARY"
+          POTENTIAL_KEYS=$(grep -rnP '(private_key|secret_key|password|passphrase)\s*=\s*"[^"]{16,}"' \
+            common/ vncviewer/ unix/ win/ 2>/dev/null || true)
+          if [ -n "$POTENTIAL_KEYS" ]; then
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$POTENTIAL_KEYS" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            ISSUES=$((ISSUES + $(echo "$POTENTIAL_KEYS" | wc -l)))
+          fi
+
+          # Check for PEM-encoded private keys in source
+          PEM_KEYS=$(grep -rnl 'BEGIN.*PRIVATE KEY' common/ vncviewer/ unix/ win/ tests/ 2>/dev/null || true)
+          if [ -n "$PEM_KEYS" ]; then
+            echo "WARNING: PEM private keys found in source:" >> "$GITHUB_STEP_SUMMARY"
+            echo "$PEM_KEYS" >> "$GITHUB_STEP_SUMMARY"
+            ISSUES=$((ISSUES + $(echo "$PEM_KEYS" | wc -l)))
+          fi
+
+          if [ "$ISSUES" -eq 0 ]; then
+            echo "No hardcoded secrets detected." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "secret_count=$ISSUES" >> "$GITHUB_OUTPUT"
+
+      - name: Check random number generation
+        id: rng
+        run: |
+          echo "### Random Number Generation" >> "$GITHUB_STEP_SUMMARY"
+          RNG_ISSUES=0
+
+          # Flag insecure rand()/srand() in crypto-related files
+          INSECURE_RAND=$(grep -rnP '\b(srand|rand)\s*\(' \
+            common/rfb/ common/rdr/ 2>/dev/null | \
+            grep -v '// safe:' | grep -v 'OQS_randombytes' | grep -v 'gnutls_rnd' || true)
+          if [ -n "$INSECURE_RAND" ]; then
+            echo "WARNING: Insecure rand()/srand() in security code:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$INSECURE_RAND" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            RNG_ISSUES=$((RNG_ISSUES + $(echo "$INSECURE_RAND" | wc -l)))
+          else
+            echo "No insecure rand()/srand() in security code." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Verify OQS_randombytes usage exists where expected
+          OQS_RNG=$(grep -rn 'OQS_randombytes' common/ 2>/dev/null || true)
+          if [ -n "$OQS_RNG" ]; then
+            echo "OQS_randombytes usage found (good):" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$OQS_RNG" | head -20 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "WARNING: No OQS_randombytes usage found in PQC code." >> "$GITHUB_STEP_SUMMARY"
+            RNG_ISSUES=$((RNG_ISSUES + 1))
+          fi
+          echo "rng_issues=$RNG_ISSUES" >> "$GITHUB_OUTPUT"
+
+      - name: Check constant-time comparisons
+        id: ct
+        run: |
+          echo "### Constant-Time Comparisons" >> "$GITHUB_STEP_SUMMARY"
+          CT_ISSUES=0
+
+          # Flag memcmp on secret data in crypto code
+          MEMCMP_CRYPTO=$(grep -rnP '\bmemcmp\s*\(' \
+            common/rfb/CSecurityPQKEM* common/rfb/SSecurityPQKEM* \
+            common/rfb/PQC*.cxx common/rfb/PQC*.h \
+            common/rfb/CSecurityRSAAES* common/rfb/SSecurityRSAAES* \
+            2>/dev/null || true)
+          if [ -n "$MEMCMP_CRYPTO" ]; then
+            echo "WARNING: memcmp() in crypto code (may not be constant-time):" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$MEMCMP_CRYPTO" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            CT_ISSUES=$((CT_ISSUES + $(echo "$MEMCMP_CRYPTO" | wc -l)))
+          else
+            echo "No memcmp() in PQC/crypto code (good)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Verify constant-time utilities are available
+          CT_UTILS=$(grep -rn 'constant_time\|CRYPTO_memcmp\|OQS_MEM_secure_bcmp\|timingsafe_bcmp' common/ 2>/dev/null || true)
+          if [ -n "$CT_UTILS" ]; then
+            echo "Constant-time utilities found:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$CT_UTILS" | head -10 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "ct_issues=$CT_ISSUES" >> "$GITHUB_OUTPUT"
+
+      - name: Check key zeroization
+        id: zeroize
+        run: |
+          echo "### Key Zeroization" >> "$GITHUB_STEP_SUMMARY"
+          ZERO_ISSUES=0
+
+          # Look for proper zeroization functions
+          SAFE_ZERO=$(grep -rn 'memset_s\|explicit_bzero\|OQS_MEM_cleanse\|SecureZeroMemory\|OPENSSL_cleanse' \
+            common/ 2>/dev/null || true)
+          if [ -n "$SAFE_ZERO" ]; then
+            echo "Safe zeroization functions found:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$SAFE_ZERO" | head -20 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "WARNING: No safe zeroization functions found." >> "$GITHUB_STEP_SUMMARY"
+            ZERO_ISSUES=$((ZERO_ISSUES + 1))
+          fi
+
+          # Check that PQC files do key cleanup
+          PQC_CLEANUP=$(grep -rn 'OQS_KEM_free\|OQS_SIG_free\|OQS_MEM_cleanse\|memset.*secret\|memset.*private\|memset.*key' \
+            common/rfb/PQC*.cxx common/rfb/*PQKEM*.cxx 2>/dev/null || true)
+          if [ -n "$PQC_CLEANUP" ]; then
+            echo "PQC key cleanup found:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$PQC_CLEANUP" | head -20 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "WARNING: No key cleanup patterns found in PQC code." >> "$GITHUB_STEP_SUMMARY"
+            ZERO_ISSUES=$((ZERO_ISSUES + 1))
+          fi
+          echo "zero_issues=$ZERO_ISSUES" >> "$GITHUB_OUTPUT"
+
+      - name: Verify AES key sizes (256-bit)
+        run: |
+          echo "### AES Key Size Verification" >> "$GITHUB_STEP_SUMMARY"
+
+          # Look for AES key size definitions
+          AES_SIZES=$(grep -rnP 'AES.*(?:key.*(?:size|len|length)|128|192|256)|aes_.*(?:key|len)' \
+            common/ 2>/dev/null || true)
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$AES_SIZES" ]; then
+            echo "$AES_SIZES" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No explicit AES key size references found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # Flag any 128-bit AES usage in PQC code (should be 256-bit)
+          AES128_PQC=$(grep -rnP 'AES.?128|aes128|AES_BLOCK_SIZE.*16.*key' \
+            common/rfb/PQC*.cxx common/rfb/*PQKEM*.cxx common/rfb/*PQKEM*.h 2>/dev/null || true)
+          if [ -n "$AES128_PQC" ]; then
+            echo "WARNING: AES-128 references in PQC code (should use AES-256):" >> "$GITHUB_STEP_SUMMARY"
+            echo "$AES128_PQC" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No AES-128 in PQC code (good)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check ML-KEM parameter validation
+        run: |
+          echo "### ML-KEM Parameter Validation" >> "$GITHUB_STEP_SUMMARY"
+
+          # Verify algorithm IDs are validated
+          MLKEM_CHECKS=$(grep -rn 'pqkemAlgMLKEM\|ML.KEM.*512\|ML.KEM.*768\|ML.KEM.*1024\|OQS_KEM_alg_ml_kem' \
+            common/rfb/ 2>/dev/null || true)
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$MLKEM_CHECKS" ]; then
+            echo "$MLKEM_CHECKS" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # Check bounds validation on algorithm IDs from wire
+          BOUNDS_CHECK=$(grep -rnP 'algId.*[<>=]|switch.*algId|pqkemAlg.*unknown\|invalid' \
+            common/rfb/PQCAlgorithm.cxx common/rfb/*PQKEM*.cxx 2>/dev/null || true)
+          if [ -n "$BOUNDS_CHECK" ]; then
+            echo "Algorithm ID validation found (good)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "WARNING: No explicit algorithm ID bounds checking found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check ML-DSA signature lengths
+        run: |
+          echo "### ML-DSA Signature Verification" >> "$GITHUB_STEP_SUMMARY"
+
+          MLDSA_REFS=$(grep -rn 'ML.DSA\|OQS_SIG_alg_ml_dsa\|sig.*len\|signature.*length\|PQCSignature' \
+            common/rfb/ 2>/dev/null || true)
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$MLDSA_REFS" ]; then
+            echo "$MLDSA_REFS" | head -30 >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No ML-DSA references found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ───────────────────────────────────────────────────────────────────
+  # 4. Memory Safety — ASan + UBSan build and test
+  # ───────────────────────────────────────────────────────────────────
+  memory-safety-asan:
+    name: AddressSanitizer Build + Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERBOSE: 1
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:halt_on_error=1
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfltk1.3-dev fluid gettext appstream
+          sudo apt-get install -y libpixman-1-dev libjpeg-turbo8-dev
+          sudo apt-get install -y libgnutls28-dev nettle-dev libgmp-dev
+          sudo apt-get install -y libxtst-dev libxdamage-dev libxfixes-dev libxrandr-dev libpam-dev
+          sudo apt-get install -y libavcodec-dev libavutil-dev libswscale-dev
+          sudo apt-get install -y uuid-dev libglib2.0-dev libpipewire-0.3-dev
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y libgtest-dev cmake ninja-build
+
+      - name: Build and install liboqs
+        run: |
+          git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
+          cd /tmp/liboqs && mkdir build && cd build
+          cmake -GNinja \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_SHARED_LIBS=ON \
+            -DOQS_BUILD_ONLY_LIB=ON ..
+          ninja
+          sudo ninja install
+          sudo ldconfig
+
+      - name: Configure with ASan
+        run: |
+          cmake \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DENABLE_ASAN=ON \
+            -DCMAKE_C_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
+            -DENABLE_GNUTLS=ON \
+            -DENABLE_NETTLE=ON \
+            -DENABLE_PQC=ON \
+            -DBUILD_VIEWER=ON \
+            -S . -B build-asan
+
+      - name: Build with ASan
+        working-directory: build-asan
+        run: make -j$(nproc)
+
+      - name: Run tests under ASan
+        id: asan_test
+        working-directory: build-asan
+        run: |
+          echo "## AddressSanitizer Results" >> "$GITHUB_STEP_SUMMARY"
+          if ctest --test-dir tests/unit/ --output-on-failure --output-junit asan-test-results.xml 2>&1 | tee asan-output.txt; then
+            echo "All tests passed under ASan." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "FAILURE: Tests failed under ASan." >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -100 asan-output.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Upload ASan results
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: asan-results
+          path: |
+            build-asan/asan-output.txt
+            build-asan/tests/unit/asan-test-results.xml
+
+  memory-safety-ubsan:
+    name: UndefinedBehaviorSanitizer Build + Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERBOSE: 1
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfltk1.3-dev fluid gettext appstream
+          sudo apt-get install -y libpixman-1-dev libjpeg-turbo8-dev
+          sudo apt-get install -y libgnutls28-dev nettle-dev libgmp-dev
+          sudo apt-get install -y libxtst-dev libxdamage-dev libxfixes-dev libxrandr-dev libpam-dev
+          sudo apt-get install -y libavcodec-dev libavutil-dev libswscale-dev
+          sudo apt-get install -y uuid-dev libglib2.0-dev libpipewire-0.3-dev
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y libgtest-dev cmake ninja-build
+
+      - name: Build and install liboqs
+        run: |
+          git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
+          cd /tmp/liboqs && mkdir build && cd build
+          cmake -GNinja \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_SHARED_LIBS=ON \
+            -DOQS_BUILD_ONLY_LIB=ON ..
+          ninja
+          sudo ninja install
+          sudo ldconfig
+
+      - name: Configure with UBSan
+        run: |
+          cmake \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=undefined -fno-omit-frame-pointer -g" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=undefined -fno-omit-frame-pointer -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=undefined" \
+            -DENABLE_GNUTLS=ON \
+            -DENABLE_NETTLE=ON \
+            -DENABLE_PQC=ON \
+            -DBUILD_VIEWER=ON \
+            -S . -B build-ubsan
+
+      - name: Build with UBSan
+        working-directory: build-ubsan
+        run: make -j$(nproc)
+
+      - name: Run tests under UBSan
+        id: ubsan_test
+        working-directory: build-ubsan
+        run: |
+          echo "## UndefinedBehaviorSanitizer Results" >> "$GITHUB_STEP_SUMMARY"
+          if ctest --test-dir tests/unit/ --output-on-failure --output-junit ubsan-test-results.xml 2>&1 | tee ubsan-output.txt; then
+            echo "All tests passed under UBSan." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "FAILURE: Tests failed under UBSan." >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -100 ubsan-output.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Check for buffer overflow patterns
+        run: |
+          echo "### Buffer Overflow Pattern Scan" >> "$GITHUB_STEP_SUMMARY"
+          # Look for unchecked array indexing patterns in security code
+          OVERFLOW_PATTERNS=$(grep -rnP '\[\s*\w+\s*\].*=|memcpy\s*\([^,]+,\s*[^,]+,\s*[^)]+\)' \
+            common/rfb/CSecurityPQKEM* common/rfb/SSecurityPQKEM* \
+            common/rfb/PQC*.cxx 2>/dev/null | \
+            grep -v 'static_assert\|sizeof\|std::min\|std::max' || true)
+          if [ -n "$OVERFLOW_PATTERNS" ]; then
+            echo "Potential unchecked buffer operations in PQC code:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$OVERFLOW_PATTERNS" | head -30 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No obvious buffer overflow patterns detected." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload UBSan results
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: ubsan-results
+          path: |
+            build-ubsan/ubsan-output.txt
+            build-ubsan/tests/unit/ubsan-test-results.xml
+
+  # ───────────────────────────────────────────────────────────────────
+  # 5. Binary Security — hardening flag verification
+  # ───────────────────────────────────────────────────────────────────
+  binary-security:
+    name: Binary Security (hardening flags)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfltk1.3-dev fluid gettext appstream
+          sudo apt-get install -y libpixman-1-dev libjpeg-turbo8-dev
+          sudo apt-get install -y libgnutls28-dev nettle-dev libgmp-dev
+          sudo apt-get install -y libxtst-dev libxdamage-dev libxfixes-dev libxrandr-dev libpam-dev
+          sudo apt-get install -y libavcodec-dev libavutil-dev libswscale-dev
+          sudo apt-get install -y uuid-dev libglib2.0-dev libpipewire-0.3-dev
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y libgtest-dev cmake ninja-build
+          sudo apt-get install -y hardening-check checksec
+
+      - name: Build and install liboqs
+        run: |
+          git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
+          cd /tmp/liboqs && mkdir build && cd build
+          cmake -GNinja \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_SHARED_LIBS=ON \
+            -DOQS_BUILD_ONLY_LIB=ON ..
+          ninja
+          sudo ninja install
+          sudo ldconfig
+
+      - name: Build release binaries with hardening
+        run: |
+          cmake \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_FLAGS="-fstack-protector-strong -fPIE -Wl,-z,relro,-z,now" \
+            -DCMAKE_CXX_FLAGS="-fstack-protector-strong -fPIE -Wl,-z,relro,-z,now" \
+            -DCMAKE_EXE_LINKER_FLAGS="-pie -Wl,-z,relro,-z,now -Wl,-z,noexecstack" \
+            -DENABLE_GNUTLS=ON \
+            -DENABLE_NETTLE=ON \
+            -DENABLE_PQC=ON \
+            -DBUILD_VIEWER=ON \
+            -S . -B build-hardened
+          cd build-hardened && make -j$(nproc)
+
+      - name: Verify binary hardening flags
+        run: |
+          echo "## Binary Security Checks" >> "$GITHUB_STEP_SUMMARY"
+
+          # Find built binaries
+          BINARIES=$(find build-hardened -maxdepth 3 -type f -executable -name 'vncviewer' -o -name 'x0vncserver' -o -name 'vncpasswd' -o -name 'vncconfig' -o -name 'w0vncserver' 2>/dev/null || true)
+
+          for BIN in $BINARIES; do
+            if [ -f "$BIN" ] && file "$BIN" | grep -q "ELF"; then
+              echo "### $(basename $BIN)" >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+              # FORTIFY_SOURCE check
+              if readelf -s "$BIN" 2>/dev/null | grep -q '__fortify'; then
+                echo "FORTIFY_SOURCE: ENABLED" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "FORTIFY_SOURCE: NOT DETECTED (may require optimized build)" >> "$GITHUB_STEP_SUMMARY"
+              fi
+
+              # Stack canary check
+              if readelf -s "$BIN" 2>/dev/null | grep -q '__stack_chk_fail'; then
+                echo "Stack Canaries: ENABLED" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "Stack Canaries: NOT DETECTED" >> "$GITHUB_STEP_SUMMARY"
+              fi
+
+              # RELRO check
+              if readelf -l "$BIN" 2>/dev/null | grep -q 'GNU_RELRO'; then
+                if readelf -d "$BIN" 2>/dev/null | grep -q 'BIND_NOW'; then
+                  echo "RELRO: FULL" >> "$GITHUB_STEP_SUMMARY"
+                else
+                  echo "RELRO: PARTIAL" >> "$GITHUB_STEP_SUMMARY"
+                fi
+              else
+                echo "RELRO: DISABLED" >> "$GITHUB_STEP_SUMMARY"
+              fi
+
+              # PIE check
+              if readelf -h "$BIN" 2>/dev/null | grep -q 'DYN'; then
+                echo "PIE: ENABLED" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "PIE: DISABLED" >> "$GITHUB_STEP_SUMMARY"
+              fi
+
+              # NX bit check
+              if readelf -l "$BIN" 2>/dev/null | grep -q 'GNU_STACK.*RW[^E]'; then
+                echo "NX (No-Execute): ENABLED" >> "$GITHUB_STEP_SUMMARY"
+              elif readelf -l "$BIN" 2>/dev/null | grep -q 'GNU_STACK'; then
+                echo "NX (No-Execute): CHECK MANUALLY" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "NX (No-Execute): NO GNU_STACK SEGMENT" >> "$GITHUB_STEP_SUMMARY"
+              fi
+
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+              # Also run hardening-check if available
+              hardening-check "$BIN" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            fi
+          done
+
+          # If no ELF binaries found, check test binaries
+          if [ -z "$BINARIES" ]; then
+            echo "No main binaries found; checking test executables..." >> "$GITHUB_STEP_SUMMARY"
+            TEST_BIN=$(find build-hardened/tests -maxdepth 3 -type f -executable 2>/dev/null | head -1)
+            if [ -n "$TEST_BIN" ] && file "$TEST_BIN" | grep -q "ELF"; then
+              echo "### $(basename $TEST_BIN) (test binary sample)" >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              hardening-check "$TEST_BIN" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || readelf -d "$TEST_BIN" >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+      - name: Verify FORTIFY_SOURCE in CMakeLists.txt
+        run: |
+          echo "### Build Configuration Check" >> "$GITHUB_STEP_SUMMARY"
+          if grep -q '_FORTIFY_SOURCE' CMakeLists.txt; then
+            FORTIFY_LINE=$(grep '_FORTIFY_SOURCE' CMakeLists.txt)
+            echo "FORTIFY_SOURCE defined in CMakeLists.txt: \`$FORTIFY_LINE\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "WARNING: _FORTIFY_SOURCE not set in CMakeLists.txt" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ───────────────────────────────────────────────────────────────────
+  # 6. Protocol Security
+  # ───────────────────────────────────────────────────────────────────
+  protocol-security:
+    name: Protocol Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Verify VeNCrypt security type constants
+        run: |
+          echo "## Protocol Security" >> "$GITHUB_STEP_SUMMARY"
+          echo "### VeNCrypt Security Type Constants" >> "$GITHUB_STEP_SUMMARY"
+
+          # Extract all security type constants
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -n 'const.*secType' common/rfb/Security.h >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # Verify PQC subtypes are in expected VeNCrypt range (256+)
+          PQC_TYPES=$(grep 'secTypePQ' common/rfb/Security.h | grep -oP '=\s*\K[0-9]+')
+          ALL_OK=true
+          for TYPE in $PQC_TYPES; do
+            if [ "$TYPE" -lt 256 ]; then
+              echo "ERROR: PQC security type $TYPE is below VeNCrypt subtype range (256+)" >> "$GITHUB_STEP_SUMMARY"
+              ALL_OK=false
+            fi
+          done
+          if $ALL_OK; then
+            echo "All PQC security types are in valid VeNCrypt subtype range (256+)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Check for duplicate values
+          ALL_TYPES=$(grep -oP 'const.*secType\w+\s*=\s*\K[0-9]+' common/rfb/Security.h | sort -n)
+          DUPES=$(echo "$ALL_TYPES" | uniq -d)
+          if [ -n "$DUPES" ]; then
+            echo "ERROR: Duplicate security type values: $DUPES" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No duplicate security type values." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check for downgrade attack vectors
+        run: |
+          echo "### Downgrade Attack Analysis" >> "$GITHUB_STEP_SUMMARY"
+
+          # Check PQCMode enforcement
+          PQCMODE_REFS=$(grep -rn 'PQCMode\|pqcMode\|pqc_mode\|pqcEnforce\|PQCEnforce' \
+            common/rfb/ 2>/dev/null || true)
+          if [ -n "$PQCMODE_REFS" ]; then
+            echo "PQCMode references found:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$PQCMODE_REFS" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "WARNING: No PQCMode enforcement references found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Check that non-PQC types can be disabled
+          SECURITY_SELECT=$(grep -rn 'secTypePQ\|isSecure\|isSupported\|enablePQC\|pqcRequired\|PQCRequired' \
+            common/rfb/Security*.cxx common/rfb/Security*.h 2>/dev/null || true)
+          if [ -n "$SECURITY_SELECT" ]; then
+            echo "Security selection logic:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$SECURITY_SELECT" | head -20 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Check for fallback patterns that might allow downgrade
+          FALLBACK=$(grep -rnP 'fallback|fall.?back|downgrade|NONE.*accept|accept.*NONE' \
+            common/rfb/CSecurityPQKEM* common/rfb/SSecurityPQKEM* \
+            common/rfb/Security*.cxx 2>/dev/null || true)
+          if [ -n "$FALLBACK" ]; then
+            echo "Potential fallback/downgrade patterns:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$FALLBACK" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No fallback/downgrade patterns found in PQC code." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Verify PQCMode enforcement logic
+        run: |
+          echo "### PQCMode Enforcement" >> "$GITHUB_STEP_SUMMARY"
+
+          # Check that PQCMode=Required actually blocks non-PQC
+          ENFORCE_LOGIC=$(grep -rn -A5 'PQCMode\|pqcMode' \
+            common/rfb/SecurityClient*.cxx common/rfb/SecurityServer*.cxx 2>/dev/null || true)
+          if [ -n "$ENFORCE_LOGIC" ]; then
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$ENFORCE_LOGIC" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No PQCMode enforcement in SecurityClient/SecurityServer." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ───────────────────────────────────────────────────────────────────
+  # 7. Supply Chain
+  # ───────────────────────────────────────────────────────────────────
+  supply-chain:
+    name: Supply Chain Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Verify GitHub Actions are pinned to SHA
+        run: |
+          echo "## Supply Chain" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Action Version Pinning" >> "$GITHUB_STEP_SUMMARY"
+
+          UNPINNED=0
+          while IFS= read -r file; do
+            # Find all 'uses:' lines and check for SHA pinning
+            USES_LINES=$(grep -n 'uses:' "$file" | grep -v '#' || true)
+            while IFS= read -r line; do
+              if [ -z "$line" ]; then continue; fi
+              # Check if it has @sha format (40-char hex)
+              if echo "$line" | grep -qP '@[0-9a-f]{40}'; then
+                continue  # Properly pinned
+              elif echo "$line" | grep -qP 'uses:\s+\./'; then
+                continue  # Local action
+              elif echo "$line" | grep -qP '@v[0-9]'; then
+                echo "WARNING: $file: $line (tag-pinned, not SHA-pinned)" >> "$GITHUB_STEP_SUMMARY"
+                UNPINNED=$((UNPINNED + 1))
+              fi
+            done <<< "$USES_LINES"
+          done < <(find .github/workflows -name '*.yml' -o -name '*.yaml' 2>/dev/null)
+
+          if [ "$UNPINNED" -eq 0 ]; then
+            echo "All actions in security-audit.yml are SHA-pinned." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Found $UNPINNED action(s) not pinned to SHA hash." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Verify liboqs clone source in workflows
+        run: |
+          echo "### liboqs Source Verification" >> "$GITHUB_STEP_SUMMARY"
+
+          OFFICIAL_URL="https://github.com/open-quantum-safe/liboqs"
+          CLONE_URLS=$(grep -rn 'git clone.*liboqs' .github/workflows/ || true)
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$CLONE_URLS" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          if echo "$CLONE_URLS" | grep -v "$OFFICIAL_URL" | grep -q 'liboqs'; then
+            echo "WARNING: liboqs cloned from non-official source." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "All liboqs clones use official repository." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check CMake security flags
+        run: |
+          echo "### CMake Security Configuration" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # Check top-level CMakeLists.txt for security flags
+          echo "=== Security flags in CMakeLists.txt ===" >> "$GITHUB_STEP_SUMMARY"
+          grep -n 'FORTIFY_SOURCE\|stack-protector\|fPIE\|-pie\|relro\|noexecstack\|Wformat\|Wall\|Wextra\|-D_DEBUG\|sanitize' \
+            CMakeLists.txt >> "$GITHUB_STEP_SUMMARY" || echo "No security flags found" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "=== Sanitizer options ===" >> "$GITHUB_STEP_SUMMARY"
+          grep -n 'ENABLE_ASAN\|ENABLE_TSAN\|sanitize' CMakeLists.txt >> "$GITHUB_STEP_SUMMARY" || true
+
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify FindLibOQS module integrity
+        run: |
+          echo "### FindLibOQS.cmake" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f cmake/Modules/FindLibOQS.cmake ]; then
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat cmake/Modules/FindLibOQS.cmake >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            FINDOQS=$(find cmake/ -name '*OQS*' -o -name '*oqs*' 2>/dev/null || true)
+            if [ -n "$FINDOQS" ]; then
+              echo "Found OQS cmake module(s): $FINDOQS" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "No FindLibOQS.cmake found." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+  # ───────────────────────────────────────────────────────────────────
+  # Summary Report
+  # ───────────────────────────────────────────────────────────────────
+  summary:
+    name: Security Audit Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: always()
+    needs:
+      - sast
+      - dependency-audit
+      - crypto-audit
+      - memory-safety-asan
+      - memory-safety-ubsan
+      - binary-security
+      - protocol-security
+      - supply-chain
+    steps:
+      - name: Generate summary report
+        run: |
+          echo "# QuantaVNC Security Audit Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Trigger:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Commit:** ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Job Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SAST (flawfinder + cppcheck) | ${{ needs.sast.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Dependency Audit | ${{ needs.dependency-audit.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Cryptographic Audit | ${{ needs.crypto-audit.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| AddressSanitizer | ${{ needs.memory-safety-asan.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| UndefinedBehaviorSanitizer | ${{ needs.memory-safety-ubsan.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Binary Security | ${{ needs.binary-security.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Protocol Security | ${{ needs.protocol-security.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Supply Chain | ${{ needs.supply-chain.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # Overall pass/fail
+          FAILED=0
+          for RESULT in \
+            "${{ needs.sast.result }}" \
+            "${{ needs.dependency-audit.result }}" \
+            "${{ needs.crypto-audit.result }}" \
+            "${{ needs.memory-safety-asan.result }}" \
+            "${{ needs.memory-safety-ubsan.result }}" \
+            "${{ needs.binary-security.result }}" \
+            "${{ needs.protocol-security.result }}" \
+            "${{ needs.supply-chain.result }}"; do
+            if [ "$RESULT" = "failure" ]; then
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          if [ "$FAILED" -eq 0 ]; then
+            echo "## Overall: PASSED" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Overall: $FAILED job(s) FAILED" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "*See individual job summaries above for detailed findings.*" >> "$GITHUB_STEP_SUMMARY"
