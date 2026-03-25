@@ -31,6 +31,7 @@
 
 #include <rfb/PQCCertificate.h>
 
+#include <gnutls/crypto.h>
 #include <gnutls/x509.h>
 #include <gnutls/abstract.h>
 
